@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CBT Platform
 
 A Computer Based Testing (CBT) platform monorepo for managing and delivering online exams to students.
@@ -146,3 +147,6 @@ findings and the options for resolving them are in
 [Wiring the frontends](server/README.md#wiring-the-frontends).
 
 The student app (`apps/web`) is untouched and still points at port 3001.
+=======
+# cbt-platform
+>>>>>>> 67ebb6464a4cfb378f9d35c9ad48e793190d27db
