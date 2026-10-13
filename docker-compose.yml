@@ -1,0 +1,58 @@
+# CBT Platform — local development database
+#
+# This file describes ONLY the database. The API and the two web apps are run
+# directly with npm on the developer machine, which keeps rebuilds fast and
+# leaves the hot-reload loop intact. Production containerisation (Nginx, baked
+# frontend images, TLS) is deliberately not described here: it does not exist yet,
+# and a compose file that references missing Dockerfiles is worse than none.
+#
+#   docker compose up -d          # start MariaDB
+#   docker compose ps             # check it is healthy
+#   docker compose down           # stop, keep the data volume
+#   docker compose down -v        # stop and DESTROY the database
+#
+# Then, from the repository root:
+#   npm run db:migrate
+#   npm run db:seed
+
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: cbt-mariadb
+    restart: unless-stopped
+
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-cbtroot}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-cbt_system}
+      MARIADB_USER: ${MARIADB_USER:-cbt}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-cbtpass}
+
+    ports:
+      # Bound to loopback deliberately.
+      #
+      # The database holds exam papers, answer keys and candidate records. The API
+      # is the only thing that should reach it, and the API runs on this same
+      # machine. Publishing 3306 on 0.0.0.0 would expose the whole database to
+      # every student machine on the LAN.
+      #
+      # Bind to "0.0.0.0:3306:3306" ONLY if you have moved the database to a
+      # separate host AND have restricted access with a firewall rule.
+      - "127.0.0.1:3306:3306"
+
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+    healthcheck:
+      # `mariadb-admin ping` succeeds before the server accepts application
+      # connections, so the healthcheck also waits for the initial init scripts
+      # to finish. Without this, a fresh `docker compose up` races the first
+      # migration against the database's first-boot setup.
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  mariadb_data:
+    name: cbt-mariadb-data

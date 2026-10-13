@@ -1,0 +1,566 @@
+// ---------------------------------------------------------------------------
+// CBT Examination System — Prisma schema (MariaDB)
+//
+// Design notes
+// - Every externally exposed entity uses a UUID primary key (§8). The default is
+//   applied by the ORM, so IDs are generated in exactly one place and are never
+//   sequential or guessable. The legacy AUTO_INCREMENT counter is still used for
+//   internal join ordering in a few places where a stable sort is required.
+// - Enums are native MariaDB enums so the database itself rejects invalid values.
+// - Money/percentage columns use DECIMAL, never Float, to avoid rounding drift.
+// - `deletedAt` implements soft deletion where records are referenced by history
+//   (students, questions, exams); hard delete is reserved for unreferenced rows.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  // Prisma 7 no longer accepts `url` here. The connection string lives in
+  // prisma.config.ts (used by the CLI) and is passed to PrismaClient through
+  // the MariaDB driver adapter at runtime. See src/config/database.ts.
+}
+
+// ===========================================================================
+// Enumerations
+// ===========================================================================
+
+enum RoleCode {
+  SUPER_ADMIN
+  ADMIN
+  EXAM_OFFICER
+  LECTURER
+  INVIGILATOR
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  ARCHIVED
+}
+
+enum SessionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+  EXPIRED
+  ABANDONED
+}
+
+enum SubjectStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LicenseStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  TRIAL
+}
+
+enum LicenseType {
+  TRIAL
+  STANDARD
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+// ===========================================================================
+// Identity, roles and permissions
+// ===========================================================================
+
+model Role {
+  id          String  @id @default(uuid()) @db.Char(36)
+  code        RoleCode @unique
+  name        String  @db.VarChar(80)
+  description String? @db.VarChar(255)
+  /// SUPER_ADMIN implicitly holds every permission regardless of the join table.
+  isSystem    Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.Char(36)
+  /// Dotted permission key, e.g. "exams.publish" (§12).
+  key         String @unique @db.VarChar(80)
+  description String? @db.VarChar(255)
+  /// Coarse grouping used by the admin UI to lay out permission screens.
+  resource    String @db.VarChar(60)
+
+  roles       RolePermission[]
+
+  @@index([resource])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @db.Char(36)
+  permissionId String @db.Char(36)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Char(36)
+  email        String     @unique @db.VarChar(190)
+  /// bcrypt hash only. Plaintext passwords are never stored or logged (§14).
+  passwordHash String     @db.VarChar(255)
+  firstName    String     @db.VarChar(80)
+  lastName     String     @db.VarChar(80)
+  status       UserStatus @default(ACTIVE)
+  roleId       String     @db.Char(36)
+  lastLoginAt  DateTime?
+  failedLoginCount Int     @default(0)
+  /// Locked out until this instant after repeated failed sign-ins.
+  lockedUntil  DateTime?
+  /// SHA-256 of the current refresh token, so a stolen DB cannot mint sessions.
+  refreshTokenHash String? @db.Char(64)
+  /// SHA-256 of the student's current sign-in session id. A candidate holds
+  /// exactly one session: a second sign-in is refused until this one ends
+  /// (self sign-out, an administrator ending it, or expiry).
+  sessionHash String? @db.Char(64)
+  /// Sliding expiry of the student session above. Null when there is none.
+  sessionExpiresAt DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  role      Role      @relation(fields: [roleId], references: [id])
+  student   Student?
+  auditLogs AuditLog[]
+  createdExams Exam[]   @relation("ExamCreatedBy")
+  createdQuestions Question[] @relation("QuestionCreatedBy")
+
+  // Authentication lookups (§13) filter on status alongside email.
+  @@index([status])
+  @@index([roleId])
+  @@index([lastLoginAt])
+  @@map("users")
+}
+
+// ===========================================================================
+// Students
+// ===========================================================================
+
+model Student {
+  id         String  @id @default(uuid()) @db.Char(36)
+  /// School-issued admission number; unique across the institution.
+  studentId  String  @unique @db.VarChar(50)
+  /// Optional. A candidate may be registered for an examination without ever
+  /// needing to sign in, so portal access is provisioned separately.
+  userId     String? @unique @db.Char(36)
+  firstName  String  @db.VarChar(80)
+  lastName   String  @db.VarChar(80)
+  email      String? @db.VarChar(190)
+  program    String  @db.VarChar(120)
+  department String? @db.VarChar(120)
+  level      Int     @default(100)
+  semester   Int     @default(1)
+  className  String? @db.VarChar(80)
+  /// Academic session, e.g. "2026/2027". Used to target examinations at one
+  /// cohort without overloading the admission number, which only encodes
+  /// the year of entry.
+  session    String? @db.VarChar(20)
+  gender     String? @db.VarChar(20)
+  status     UserStatus @default(ACTIVE)
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions ExamSession[]
+  results  Result[]
+
+  @@index([studentId])
+  @@index([program, level])
+  @@index([lastName])
+  @@index([className])
+  @@index([status])
+  @@map("students")
+}
+
+// ===========================================================================
+// Question bank
+// ===========================================================================
+
+model Category {
+  id          String  @id @default(uuid()) @db.Char(36)
+  name        String  @unique @db.VarChar(120)
+  description String? @db.Text
+  /// Sort weight for the admin UI and for deterministic random selection.
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subjects  Subject[]
+  questions Question[]
+
+  @@index([isActive])
+  @@map("categories")
+}
+
+model Subject {
+  id         String        @id @default(uuid()) @db.Char(36)
+  categoryId String        @db.Char(36)
+  name       String        @db.VarChar(120)
+  code       String?       @unique @db.VarChar(40)
+  status     SubjectStatus @default(ACTIVE)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  category  Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  questions Question[]
+
+  @@index([categoryId])
+  @@index([status])
+  @@map("subjects")
+}
+
+model Question {
+  id          String          @id @default(uuid()) @db.Char(36)
+  categoryId  String          @db.Char(36)
+  subjectId   String          @db.Char(36)
+  createdById String?         @db.Char(36)
+  type        QuestionType    @default(MULTIPLE_CHOICE)
+  stem        String          @db.Text
+  explanation String?         @db.Text
+  difficulty  DifficultyLevel @default(MEDIUM)
+  /// Marks awarded for a correct response.
+  points      Decimal         @default(1) @db.Decimal(6, 2)
+  /// Reference only. The server still re-validates every submitted answer
+  /// against this field; the student API never returns it (§32).
+  correctAnswer String        @db.VarChar(255)
+  status      QuestionStatus  @default(ACTIVE)
+  tags        String?         @db.VarChar(255)
+  timesUsed   Int             @default(0)
+  deletedAt   DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  category      Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  subject       Subject         @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  createdBy     User?           @relation("QuestionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  options       QuestionOption[]
+  examQuestions ExamQuestion[]
+  answers       ExamAnswer[]
+
+  // The question picker filters on status + subject (+ category) and shuffles
+  // the pool, so a composite index keeps pool selection off a filesort.
+  @@index([categoryId])
+  @@index([subjectId])
+  @@index([status])
+  @@index([type])
+  @@index([subjectId, status])
+  @@index([categoryId, status])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String  @id @default(uuid()) @db.Char(36)
+  questionId String  @db.Char(36)
+  /// Stable per-question key ("A", "B", …) so shuffling options never invalidates
+  /// a stored answer.
+  label      String  @db.VarChar(4)
+  text       String  @db.Text
+  sortOrder  Int     @default(0)
+
+  question  Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers   ExamAnswer[]
+
+  @@unique([questionId, label])
+  @@index([questionId])
+  @@map("question_options")
+}
+
+// ===========================================================================
+// Examinations
+// ===========================================================================
+
+model Exam {
+  id           String     @id @default(uuid()) @db.Char(36)
+  title        String     @db.VarChar(200)
+  description  String?    @db.Text
+  instructions String?    @db.Text
+  createdById  String     @db.Char(36)
+
+  program      String?    @db.VarChar(120)
+  department   String?    @db.VarChar(120)
+  level        Int?
+  semester     Int?
+  /// Academic session, e.g. "2026/2027". When set, only candidates
+  /// registered in that session are delivered the paper.
+  session      String?    @db.VarChar(20)
+  /// Class names this paper is set for, e.g. ["CSC 100 - A", "CSC 100 - B"].
+  /// Delivery to specific classes is enforced when sessions open (§55).
+  classes      Json?
+
+  /// Minutes. The server owns the clock; the browser only renders it (§28).
+  durationMinutes Int
+  /// Percentage required to pass.
+  passPercentage Decimal   @default(50) @db.Decimal(5, 2)
+  maxAttempts   Int        @default(1)
+
+  shuffleQuestions Boolean @default(true)
+  shuffleOptions   Boolean @default(false)
+  showResultImmediately Boolean @default(false)
+  /// Questions drawn from the pool; when null every eligible question is used.
+  questionCount Int?
+
+  startAt DateTime?
+  endAt   DateTime?
+
+  status      ExamStatus @default(DRAFT)
+  publishedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  createdBy User            @relation("ExamCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  questions ExamQuestion[]
+  sessions  ExamSession[]
+  results   Result[]
+
+  @@index([status])
+  @@index([program, level])
+  @@index([startAt, endAt])
+  @@index([createdById])
+  @@map("exams")
+}
+
+/// Join row resolving the many-to-many between exams and the question bank.
+/// `position` fixes the order a student sees, so a randomised session can still
+/// be replayed exactly as delivered.
+model ExamQuestion {
+  examId     String @db.Char(36)
+  questionId String @db.Char(36)
+  position   Int
+  /// Marks this question contributes within this exam; defaults to the
+  /// question's own points when null.
+  points     Decimal? @db.Decimal(6, 2)
+
+  exam     Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@id([examId, questionId])
+  @@index([questionId])
+  @@index([examId, position])
+  @@map("exam_questions")
+}
+
+// ===========================================================================
+// Exam sessions, answers and results
+// ===========================================================================
+
+model ExamSession {
+  id        String @id @default(uuid()) @db.Char(36)
+  examId    String @db.Char(36)
+  studentId String @db.Char(36)
+
+  status SessionStatus @default(IN_PROGRESS)
+
+  /// Authoritative timestamps. `expiresAt` is computed once at start and is the
+  /// only thing that decides whether an exam is still live (§28).
+  startedAt   DateTime  @default(now())
+  expiresAt   DateTime
+  submittedAt DateTime?
+  lastSavedAt DateTime?
+
+  /// Frozen snapshot of the question order and option order for this attempt.
+  /// Persisted so a resumed or retried request can never regenerate a different
+  /// paper mid-exam (§33).
+  questionOrder Json?
+
+  /// 1..maxAttempts. Enforced in the service inside a transaction.
+  attemptNumber Int @default(1)
+
+  /// Requests processed for this session, used to flag suspicious traffic.
+  violationCount Int @default(0)
+  lastIpAddress  String? @db.VarChar(45)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Restrict)
+  student Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers ExamAnswer[]
+  result  Result?
+
+  // Starting an exam looks up "the live attempt for this student in this exam".
+  @@unique([examId, studentId, attemptNumber])
+  @@index([studentId])
+  @@index([examId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("exam_sessions")
+}
+
+model ExamAnswer {
+  id            String   @id @default(uuid()) @db.Char(36)
+  examSessionId String   @db.Char(36)
+  questionId    String   @db.Char(36)
+  /// Set for objective questions; null when unanswered.
+  selectedOptionId String? @db.Char(36)
+  /// Free text for SHORT_ANSWER.
+  textAnswer    String?  @db.Text
+  isCorrect     Boolean?
+  marksObtained Decimal? @db.Decimal(6, 2)
+  answeredAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  examSession  ExamSession    @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  question     Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOption QuestionOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+
+  // One answer per question per session; this unique constraint is what makes
+  /// answer saving idempotent under retries (§44).
+  @@unique([examSessionId, questionId])
+  @@index([examSessionId])
+  @@index([questionId])
+  @@map("exam_answers")
+}
+
+model Result {
+  id        String  @id @default(uuid()) @db.Char(36)
+  sessionId String  @unique @db.Char(36)
+  examId    String  @db.Char(36)
+  studentId String  @db.Char(36)
+
+  totalQuestions  Int
+  answeredQuestions Int
+  correctAnswers  Int
+  wrongAnswers    Int
+  unanswered      Int
+
+  totalMarks      Decimal @db.Decimal(8, 2)
+  marksObtained   Decimal @db.Decimal(8, 2)
+  percentage      Decimal @db.Decimal(5, 2)
+  passed          Boolean
+
+  /// Seconds actually spent, from startedAt to submittedAt.
+  timeSpentSeconds Int
+  gradedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exam    Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([examId])
+  @@index([passed])
+  @@index([gradedAt])
+  @@map("results")
+}
+
+// ===========================================================================
+// Audit trail
+// ===========================================================================
+
+model AuditLog {
+  id       String  @id @default(uuid()) @db.Char(36)
+  /// Null for actions by an unauthenticated actor (e.g. a failed sign-in).
+  actorId  String? @db.Char(36)
+  action   String  @db.VarChar(80)
+  entity   String? @db.VarChar(60)
+  entityId String? @db.Char(36)
+  description String? @db.VarChar(500)
+  /// Non-sensitive contextual detail (changed fields, counts). Never secrets,
+  /// never answer keys.
+  metadata Json?
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.VarChar(255)
+  success  Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([action])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+// ===========================================================================
+// System configuration and licensing
+// ===========================================================================
+
+model SystemSetting {
+  key         String   @id @db.VarChar(80)
+  /// Values are stored as text and parsed by a per-key Zod schema so a setting
+  /// can never be read back as the wrong type (§47).
+  value       String   @db.Text
+  valueType   String   @default("string") @db.VarChar(20)
+  description String?  @db.VarChar(255)
+  isPublic    Boolean  @default(false)
+  updatedById String?  @db.Char(36)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@map("system_settings")
+}
+
+model License {
+  id             String @id @default(uuid()) @db.Char(36)
+  installationId String @unique @db.VarChar(64)
+  licenseKey     String @unique @db.VarChar(255)
+  /// Digest of the key, never the key itself in audit output.
+  licenseKeyHash String? @db.Char(64)
+  type           LicenseType @default(TRIAL)
+  status         LicenseStatus @default(TRIAL)
+  issuedTo       String? @db.VarChar(190)
+  issuedAt       DateTime @default(now())
+  expiresAt      DateTime?
+  studentLimit   Int
+  seatsInUse     Int     @default(0)
+  features       Json?
+  activatedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+  @@index([expiresAt])
+  @@map("licenses")
+}

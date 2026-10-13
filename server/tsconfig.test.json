@@ -1,0 +1,17 @@
+{
+  "//": [
+    "Type-checks the test suite and maintenance scripts.",
+    "tsconfig.json deliberately excludes these so `npm run build` emits only",
+    "application code into dist/ -- tests are executed by Vitest, not shipped.",
+    "This config exists so that `npm run typecheck:tests` and ESLint's typed",
+    "rules can still see the files."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "prisma/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
