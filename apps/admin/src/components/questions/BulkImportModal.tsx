@@ -13,7 +13,7 @@ import { useSubmitGuard } from '../../hooks/useSubmitGuard'
 import type { Category, Difficulty, QuestionStatus, QuestionType, Subject } from '../../types'
 
 const UPLOAD_ZONE =
-  'flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 text-center transition-colors hover:border-brand-500 hover:bg-brand-50'
+  'flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 text-center transition-colors hover:border-[var(--cb-primary)] hover:bg-[var(--cb-primary-bg)]'
 
 /** Column header aliases, lower-cased and de-spaced for matching. */
 const ALIASES: Record<string, string> = {
@@ -485,7 +485,7 @@ export function BulkImportModal({
           >
             <Upload className="h-5 w-5 text-slate-400" />
             <div className="text-sm">
-              <span className="font-medium text-brand-700">Upload a file</span>
+              <span className="font-medium text-[var(--cb-primary-deep)]">Upload a file</span>
               <span className="text-slate-500"> or drag and drop</span>
             </div>
             <p className="text-2xs text-slate-400">
@@ -505,7 +505,7 @@ export function BulkImportModal({
             </p>
           )}
           {(parseError ?? error) && (
-            <p className="mt-1.5 rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800">
+            <p className="mt-1.5 rounded-md bg-[var(--cb-primary-bg)] px-3 py-2 text-sm text-[var(--cb-primary-deep)]">
               {parseError ?? error}
             </p>
           )}

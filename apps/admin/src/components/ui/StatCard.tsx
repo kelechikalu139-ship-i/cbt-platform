@@ -15,7 +15,7 @@ export interface StatCardProps {
 }
 
 const TONE_PLATE: Record<NonNullable<StatCardProps['tone']>, string> = {
-  brand: 'bg-brand-50 text-brand-600',
+  brand: 'bg-[var(--cb-primary-bg)] text-[var(--cb-primary-deep)]',
   emerald: 'bg-emerald-50 text-emerald-600',
   amber: 'bg-amber-50 text-amber-600',
   violet: 'bg-violet-50 text-violet-600',
@@ -46,7 +46,7 @@ export function StatCard({
       className={cn(
         'flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-5 py-4 text-left shadow-panel',
         onClick &&
-          'cursor-pointer transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+          'cursor-pointer transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)]',
         className,
       )}
     >
@@ -114,7 +114,7 @@ export function ProportionBar({
         ? 'bg-amber-500'
         : tone === 'red'
           ? 'bg-red-500'
-          : 'bg-brand-500'
+          : 'bg-[var(--cb-primary)]'
 
   return (
     <div

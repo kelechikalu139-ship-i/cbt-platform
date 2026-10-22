@@ -10,7 +10,16 @@ interface NavItem {
   icon?: React.ReactNode
 }
 
-export const Sidebar = () => {
+interface SidebarProps {
+  branding: {
+    schoolName: string
+    schoolShortName: string
+    primaryColor: string | null
+    logoUrl: string | null
+  } | null
+}
+
+export const Sidebar = ({ branding }: SidebarProps) => {
   const { user, logout } = useAuth()
   const location = useLocation()
 
@@ -23,26 +32,37 @@ export const Sidebar = () => {
 
   const handleLogout = async () => {
     try {
-      // The portal grants a student one live session at a time, so a
-      // local-only sign-out would strand that session and block the
-      // next sign-in until it expires. End it on the server first.
       await authAPI.logout()
     } catch {
-      // A failed request still clears local state; the session ends
-      // on its own or an administrator can terminate it.
+      // A failed request still clears local state.
     } finally {
       logout()
     }
   }
 
+  const schoolName = branding?.schoolName ?? 'CBT Platform'
+
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-white border-r border-gray-200">
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-200">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">
-            C
-          </div>
-          <span className="text-xl font-semibold text-gray-900">CBT Platform</span>
+          {branding?.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt={schoolName}
+              className="w-8 h-8 rounded-md object-cover border border-slate-200 bg-slate-50"
+            />
+          ) : (
+            <div
+              className={cn(
+                'w-8 h-8 rounded-lg flex items-center justify-center font-bold',
+                'bg-[var(--cb-primary)] text-[var(--cb-primary-text)]',
+              )}
+            >
+              {branding?.schoolShortName?.charAt(0) ?? 'C'}
+            </div>
+          )}
+          <span className="text-xl font-semibold text-gray-900 truncate">{schoolName}</span>
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-1">
@@ -55,7 +75,7 @@ export const Sidebar = () => {
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-indigo-50 text-indigo-700'
+                    ? 'bg-[var(--cb-primary-a10)] text-[var(--cb-primary-deep)]'
                     : 'text-gray-700 hover:bg-gray-100',
                 )}
               >
@@ -68,7 +88,7 @@ export const Sidebar = () => {
 
         <div className="px-4 py-4 border-t border-gray-200">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold">
+            <div className="w-10 h-10 rounded-full bg-[var(--cb-primary-a10)] flex items-center justify-center text-[var(--cb-primary-deep)] font-semibold">
               {user?.name?.charAt(0) || 'U'}
             </div>
             <div className="flex-1 min-w-0">

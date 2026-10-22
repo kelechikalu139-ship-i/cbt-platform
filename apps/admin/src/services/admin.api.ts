@@ -8,19 +8,25 @@ import type {
   ExamInput,
   HealthProbe,
   ListQuery,
+  LiveExamSession,
   Paginated,
   Question,
   QuestionInput,
   QuestionType,
+  Result,
+  ResultSummary,
   Role,
   SchoolOptions,
   Student,
   StudentInput,
+  StudentPerformance,
   Subject,
   SubjectInput,
+  SystemSettings,
   SystemStatus,
   User,
   UserInput,
+  BackupInfo,
 } from '../types'
 import { http } from './http'
 
@@ -67,6 +73,18 @@ export const realAuthApi = {
   logout: () => http.post<void>('/auth/logout'),
   changePassword: (currentPassword: string, newPassword: string) =>
     http.post<void>('/auth/change-password', { currentPassword, newPassword }),
+  /**
+   * One-time super administrator registration.
+   *
+   * Only available when no active super administrator exists. Returns the full
+   * token bundle so the caller can sign in immediately.
+   */
+  register: (payload: {
+    email: string
+    password: string
+    firstName: string
+    lastName: string
+  }) => http.post<LoginResponse>('/auth/register', payload),
 }
 
 /* -------------------------------------------------------------------------- */
@@ -98,6 +116,34 @@ export const realSystemApi = {
   health: () => http.get<HealthProbe>('/health', { acceptStatuses: [503] }),
   /** Richer status card payload, behind `system.read`. */
   status: () => http.get<SystemStatus>('/system/status'),
+  /** System settings. */
+  settings: () => http.get<SystemSettings>('/system/settings'),
+  saveSettings: (patch: Partial<SystemSettings>) => http.patch<SystemSettings>('/system/settings', patch),
+  /**
+   * `POST /system/logo` — multipart upload of the institution logo.
+   *
+   * Returns the public URL the uploaded file is served at. The caller persists
+   * it with `saveSettings`; the upload itself only stores the file.
+   */
+  uploadLogo: (file: File) => {
+    const formData = new FormData()
+    formData.append('logo', file)
+    return http.post<{ logoUrl: string }>('/system/logo', formData)
+  },
+  /**
+   * `POST /system/restart` — gracefully shut the server down so a supervisor
+   * can start a fresh process. The server exits with code 0 after shutdown.
+   */
+  restartService: () => http.post<void>('/system/restart'),
+  /** List every backup folder available on the server. */
+  backups: () => http.get<BackupInfo[]>('/system/backups'),
+  /** Create a new logical backup of every table. */
+  backup: () => http.post<BackupInfo>('/system/backup', {}),
+  /**
+   * Restore a backup folder back into the database, replacing all current data.
+   * `name` is the backup folder's timestamp from `backups()`.
+   */
+  restoreBackup: (name: string) => http.post<{ message: string }>('/system/restore', { name }),
 }
 
 /* -------------------------------------------------------------------------- */
@@ -125,6 +171,12 @@ export const realStudentsApi = {
   setStatus: (id: string, status: Student['status']) =>
     http.patch<Student>(`/students/${id}`, { status }),
   remove: (id: string) => http.delete<void>(`/students/${id}`),
+  /**
+   * Soft-delete every student matching a class name or an examination.
+   * At least one of `className` or `examId` must be provided.
+   */
+  removeByFilter: (filter: { className?: string; examId?: string }) =>
+    http.delete<{ deleted: number }>('/students/bulk', { body: filter }),
   /** End a student's active session (forces sign-out on all devices). */
   endSession: (id: string) => http.post<void>(`/students/${id}/logout`),
     classes: () => http.get<string[]>('/students/classes'),
@@ -200,16 +252,103 @@ export const realExamsApi = {
    */
   publish: (id: string) => http.post<Exam>(`/exams/${id}/publish`),
   unpublish: (id: string) => http.post<Exam>(`/exams/${id}/unpublish`),
+  /**
+   * Soft-delete an exam even when it has student attempts.
+   *
+   * Unlike unpublish/delete, archiving is always allowed: the paper is
+   * hidden from the active list but its results stay intact for reporting.
+   */
+  archive: (id: string) => http.post<{ id: string; archived: true }>(`/exams/${id}/archive`),
+
+  /**
+   * Attempts in progress right now. Polled by the live monitor, so the
+   * response is capped by the server and safe to refresh on an interval.
+   */
+  liveSessions: (query: { examId?: string; limit?: number } = {}) =>
+    http.get<LiveExamSession[]>('/exams/sessions/live', { query: query as Query }),
+
+  /**
+   * Close one candidate's live attempt early and grade what was answered.
+   * Used when a device has died mid-exam or an invigilator ends the attempt.
+   */
+  forceSubmitSession: (sessionId: string, reason?: string) =>
+    http.post<LiveExamSession | null>(`/exams/sessions/${sessionId}/force-submit`, {
+      ...(reason ? { reason } : {}),
+    }),
+
+  /**
+   * Wipe attempts on a paper so candidates can sit it again.
+   *
+   * With no student ids every attempt is reset; otherwise only the listed
+   * admission numbers. Returns how many attempts were actually cleared.
+   */
+  resetAttempts: (examId: string, studentIds?: string[]) =>
+    http.post<{ examTitle: string; resetStudents: number; resetAttempts: number }>(
+      `/exams/${examId}/reset-attempts`,
+      { ...(studentIds && studentIds.length > 0 ? { studentIds } : {}) },
+    ),
+
+  /**
+   * Add extra time to a live examination session.
+   *
+   * Granted when a technical fault ate part of the sitting. The server clock
+   * extends the deadline; the candidate's browser picks it up on the next poll.
+   */
+  extendSession: (sessionId: string, additionalMinutes: number) =>
+    http.post<LiveExamSession | null>(
+      `/exams/sessions/${sessionId}/extend-time`,
+      { additionalMinutes },
+    ),
+
+  /**
+   * Every candidate who has attempted a paper. The reset dialog lists
+   * these so an invigilator picks names rather than typing them.
+   */
+  examAttempts: (examId: string) =>
+    http.get<
+      Array<{
+        studentRecordId: string
+        admissionNumber: string
+        studentName: string
+        className: string | null
+        attempts: number
+        isLive: boolean
+        lastSubmittedAt: string | null
+      }>
+    >(`/exams/${examId}/attempts`),
 }
 
 /**
- * Results and grading have no backend in this phase.
- *
- * There is no results router in `server/src/routes/index.ts` — grading belongs to
- * the exam-engine phase. So there is deliberately no `realResultsApi`: the results
- * screen runs off fixtures in mock mode only, and saying so on the screen is better
- * than shipping calls that 404 at runtime.
+ * Real implementations of the results API, backed by the server's results router.
  */
+export const realResultsApi = {
+  /** Paginated list of all graded results. */
+  list: (query: {
+    page?: number
+    limit?: number
+    search?: string
+    examId?: string
+    studentId?: string
+    passed?: 'all' | 'true' | 'false'
+    grade?: 'all' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+    sort?: string
+    order?: 'asc' | 'desc'
+  } = {}) =>
+    http.get<Paginated<Result>>('/results', { query: query as Query }),
+
+  /** Aggregate summary: totals, pass rate, grade distribution, subject performance. */
+  summary: () => http.get<ResultSummary>('/results/summary'),
+
+  /** CSV export of every result. */
+  exportCsv: () => http.get<string>('/results/export', { responseType: 'text' }),
+
+  /** One result by id. */
+  get: (id: string) => http.get<Result>(`/results/${id}`),
+
+  /** Aggregate performance for one student across every exam they sat. */
+  studentPerformance: (studentId: string) =>
+    http.get<StudentPerformance>(`/results/students/${studentId}/performance`),
+}
 
 export const realUsersApi = {
   /** The list filter is `roleCode`, matching the column's unique name, not `role`. */

@@ -11,7 +11,7 @@ import { cn } from '../../utils'
 
 const FIELD_BASE =
   'w-full rounded-md border bg-white text-sm text-slate-800 placeholder:text-slate-400 ' +
-  'transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 ' +
+  'transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--cb-primary-a30)] focus:border-[var(--cb-primary)] ' +
   'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500'
 
 interface FieldShellProps {
@@ -281,7 +281,7 @@ export function Checkbox({ label, description, className, id, ...rest }: Checkbo
       <input
         id={fieldId}
         type="checkbox"
-        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-[var(--cb-primary-deep)] focus:ring-[var(--cb-primary)]"
         {...rest}
       />
       <label htmlFor={fieldId} className="cursor-pointer select-none text-sm leading-tight">
@@ -321,9 +321,9 @@ export function Toggle({
         onClick={() => onChange(!checked)}
         className={cn(
           'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)] focus-visible:ring-offset-2',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          checked ? 'bg-brand-600' : 'bg-slate-300',
+          checked ? 'bg-[var(--cb-primary)]' : 'bg-slate-300',
         )}
       >
         <span

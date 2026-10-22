@@ -5,6 +5,7 @@ import { sendData } from '../../utils/http-response.js'
 import { prisma } from '../../config/database.js'
 import { PERMISSIONS } from '../../constants/permissions.js'
 import { ApiError } from '../../utils/api-error.js'
+import { countLiveSessions, countSignedInStudents, listLiveSessions } from '../monitoring/monitoring.service.js'
 
 /**
  * Dashboard aggregate (§24).
@@ -36,9 +37,23 @@ type Counters = {
   completedExams: number
   totalResults: number
   totalUsers: number
+  /** Attempts in progress right now. */
+  liveSessions: number
+  /** Candidates holding a live portal sign-in. */
+  signedInStudents: number
 }
 
 type DailyActivity = { date: string; started: number; submitted: number }
+
+/** One row of the subject-performance aggregation. DB returns numbers as strings. */
+type SubjectPerformanceRow = {
+  subjectId: string
+  subjectName: string
+  categoryName: string
+  averageScore: string
+  attempts: string
+  passRate: string
+}
 
 dashboardRouter.get(
   '/',
@@ -73,6 +88,7 @@ dashboardRouter.get(
     const seeQuestions = can(PERMISSIONS.QUESTIONS_READ)
     const seeExams = can(PERMISSIONS.EXAMS_READ)
     const seeUsers = can(PERMISSIONS.USERS_READ)
+    const seeResults = can(PERMISSIONS.RESULTS_READ)
 
     // Started today, server-side. The browser clock is never trusted for filtering.
     const startOfToday = new Date()
@@ -91,6 +107,8 @@ dashboardRouter.get(
       completedExams: 0,
       totalResults: 0,
       totalUsers: 0,
+      liveSessions: 0,
+      signedInStudents: 0,
     }
 
     // One grouped count per table. Issued concurrently so a whole lab hitting the
@@ -140,6 +158,8 @@ dashboardRouter.get(
       completedExams: examsCompleted,
       totalResults: resultsTotal,
       totalUsers: usersTotal,
+      liveSessions: seeExams ? await countLiveSessions() : 0,
+      signedInStudents: seeStudents ? await countSignedInStudents() : 0,
     })
 
     // Upcoming exams: published papers whose window has not closed. An exam with
@@ -216,16 +236,55 @@ dashboardRouter.get(
       if (bucket) bucket.submitted += row._count._all
     }
 
+    // Live attempts — the same query the monitor runs, capped for the
+    // landing page. Reported empty rather than omitted so the panel
+    // renders an honest "nobody is writing" instead of disappearing.
+    const activeSessions = seeExams ? await listLiveSessions({ limit: 8 }) : []
+
+    // Subject performance: average score across completed examinations,
+    // grouped by subject. Each (result, subject) pair counts once, so a
+    // multi-subject exam contributes its percentage to each of its subjects.
+    const subjectPerformance = seeResults
+      ? (
+          await prisma.$queryRawUnsafe<SubjectPerformanceRow[]>(`
+            WITH result_subjects AS (
+              SELECT DISTINCT r.id as resultId, r.percentage, r.passed,
+                             s.id as subjectId, s.name as subjectName,
+                             c.name as categoryName
+              FROM \`results\` r
+              JOIN \`exam_questions\` eq ON eq.examId = r.examId
+              JOIN \`questions\` q ON q.id = eq.questionId
+              JOIN \`subjects\` s ON s.id = q.subjectId
+              JOIN \`categories\` c ON c.id = s.categoryId
+            )
+            SELECT
+              subjectId,
+              subjectName,
+              categoryName,
+              ROUND(AVG(CAST(percentage AS DECIMAL(10,2))), 2) as averageScore,
+              COUNT(*) as attempts,
+              ROUND(AVG(CASE WHEN passed = 1 THEN 1 ELSE 0 END) * 100, 2) as passRate
+            FROM result_subjects
+            GROUP BY subjectId, subjectName, categoryName
+            ORDER BY averageScore DESC
+          `)
+        ).map((row) => ({
+          subjectId: row.subjectId,
+          subjectName: row.subjectName,
+          categoryName: row.categoryName,
+          averageScore: Number(row.averageScore),
+          attempts: Number(row.attempts),
+          passRate: Number(row.passRate),
+        }))
+      : []
+
     sendData(res, {
       counters,
       recentActivity: [...activityByDay.values()],
       upcomingExams,
       todayExams: examsPublished,
-      // Sessions, results analytics and licensing land in later phases. Reported
-      // as empty rather than omitted so the dashboard renders every panel with
-      // an honest "no data yet" instead of silently skipping them.
-      activeSessions: [],
-      subjectPerformance: [],
+      activeSessions,
+      subjectPerformance,
       license: null,
       generatedAt: new Date().toISOString(),
     })

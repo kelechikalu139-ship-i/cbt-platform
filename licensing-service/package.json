@@ -1,0 +1,6 @@
+{
+  "name":"cbt-licensing-service","version":"1.0.0","private":true,"type":"module",
+  "engines":{"node":">=20.11.0"},
+  "scripts":{"start":"node src/server.js","dev":"node --watch src/server.js","check":"node --check src/server.js && node --check src/license-service.js"},
+  "dependencies":{"bcrypt":"^6.0.0","cors":"^2.8.5","dotenv":"^16.4.7","express":"^5.2.1","express-rate-limit":"^7.5.0","helmet":"^8.0.0","jsonwebtoken":"^9.0.2","mysql2":"^3.14.0","zod":"^4.6.5"}
+}

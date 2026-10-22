@@ -79,6 +79,11 @@ interface RequestOptions {
    * "degraded" into "no data". The body is still returned unchanged.
    */
   acceptStatuses?: number[]
+  /**
+   * When `'text'`, the raw response body is returned instead of attempting
+   * JSON parsing. Used for CSV export endpoints.
+   */
+  responseType?: 'text'
 }
 
 export function buildQueryString(
@@ -108,7 +113,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const { method = 'GET', body, query, signal, acceptStatuses } = options
 
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const isFormData = body instanceof FormData
+  if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json'
 
   const token = readToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -118,10 +124,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     response = await fetch(`${API_BASE_URL}${path}${buildQueryString(query)}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: isFormData ? (body as BodyInit) : body === undefined ? undefined : JSON.stringify(body),
       signal,
-      // Session cookie is not used, but keep credentials off so the API cannot
-      // be coaxed into cross-origin cookie behaviour on a shared lab machine.
       credentials: 'omit',
     })
   } catch (cause) {
@@ -135,6 +139,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   const text = await response.text()
+  if (options.responseType === 'text') {
+    if (!response.ok && !acceptStatuses?.includes(response.status)) {
+      throw new ApiError(
+        text || `Request failed with status ${response.status}`,
+        response.status,
+      )
+    }
+    return text as unknown as T
+  }
+
   let payload: unknown = null
   if (text) {
     try {

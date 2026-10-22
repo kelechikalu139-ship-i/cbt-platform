@@ -28,7 +28,7 @@ export function Tabs({ items, className }: { items: TabItem[]; className?: strin
             cn(
               '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition-colors',
               isActive
-                ? 'border-brand-600 text-brand-700'
+                ? 'border-[var(--cb-primary)] text-[var(--cb-primary-deep)]'
                 : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
             )
           }

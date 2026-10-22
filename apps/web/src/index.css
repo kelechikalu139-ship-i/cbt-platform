@@ -3,8 +3,26 @@
 @tailwind utilities;
 
 :root {
-  --primary: #4f46e5;
-  --primary-dark: #4338ca;
+  /* Institution brand, themed from `GET /system/branding` (primaryColor).
+     These fallbacks match the shipped indigo palette until branding loads.
+     `applyBranding` overrides them at runtime and removes the override when
+     the institution has no brand colour, so all four must have a value here —
+     `--cb-primary-text` in particular, or text on a primary background would
+     fall back to the inherited colour and lose its contrast. */
+  --cb-primary: #4f46e5;
+  --cb-primary-dark: #4338ca;
+  --cb-primary-bg: #eef2ff;
+  --cb-primary-deep: #27286a;
+  --cb-primary-text: #ffffff;
+
+  /* Translucent variant of the brand colour. Tailwind 3 cannot apply an
+     opacity modifier to an arbitrary `var()` value — `bg-[var(--cb-primary)]/10`
+     is dropped from the build and renders nothing. This pre-mixed variant is
+     referenced directly (`bg-[var(--cb-primary-a10)]`) so the intent ships.
+     It substitutes `--cb-primary` at computed-value time, so it follows
+     `applyBranding` automatically. `color-mix()` needs Chrome 111+,
+     Safari 16.2+ or Firefox 113+. */
+  --cb-primary-a10: color-mix(in srgb, var(--cb-primary) 10%, transparent);
 }
 
 body {

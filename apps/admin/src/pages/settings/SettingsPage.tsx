@@ -1,4 +1,4 @@
-import { Check, Database, RotateCcw, Save, Server, ShieldCheck } from 'lucide-react'
+import { Check, Database, RotateCcw, Save, Server, ShieldCheck, Upload, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   Alert,
@@ -14,7 +14,11 @@ import {
   Select,
   Toggle,
 } from '../../components/ui'
-import type { SystemSettings } from '../../types'
+import { systemApi } from '../../services'
+import { applyBrandColor } from '../../utils/theme'
+import { cn } from '../../utils'
+import { useApiErrorMessage } from '../../hooks/useApiErrorMessage'
+import type { BackupInfo, SystemSettings } from '../../types'
 
 interface SettingsPageProps {
   settings: SystemSettings
@@ -44,11 +48,45 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [form, setForm] = useState<SystemSettings>(settings)
   const [dirty, setDirty] = useState(false)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoErrorRaw, setLogoErrorRaw] = useState<unknown>(null)
+  const logoError = useApiErrorMessage(logoErrorRaw)
+  const [installationId, setInstallationId] = useState<string | null>(null)
+  const [installationLoading, setInstallationLoading] = useState(false)
+  const [copying, setCopying] = useState(false)
+  const [confirmRestart, setConfirmRestart] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [backupsLoading, setBackupsLoading] = useState(false)
+  const [backupCreating, setBackupCreating] = useState(false)
+  const [confirmRestore, setConfirmRestore] = useState(false)
+  const [restoreName, setRestoreName] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
 
   // Reload the form when new data arrives, unless the administrator is editing.
   useEffect(() => {
     if (!dirty) setForm(settings)
   }, [settings, dirty])
+
+  // Fetch the machine installation ID for the support / licensing row.
+  useEffect(() => {
+    setInstallationLoading(true)
+    void systemApi
+      .status()
+      .then((status) => setInstallationId(status.installationId ?? null))
+      .catch(() => setInstallationId(null))
+      .finally(() => setInstallationLoading(false))
+  }, [])
+
+  // List available backups so the restore panel can offer them.
+  useEffect(() => {
+    setBackupsLoading(true)
+    void systemApi
+      .backups()
+      .then((list) => setBackups(list))
+      .catch(() => setBackups([]))
+      .finally(() => setBackupsLoading(false))
+  }, [])
 
   const update = <K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -125,13 +163,84 @@ export function SettingsPage({
               onChange={(e) => update('schoolShortName', e.target.value)}
               hint="Used in headers and the browser tab title. Four to eight characters."
             />
-            <Input
-              label="Logo URL"
-              value={form.logoUrl ?? ''}
-              onChange={(e) => update('logoUrl', e.target.value || null)}
-              placeholder="Served by the CBT server"
-              hint="Leave blank to use the default mark."
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                label="Primary color"
+                type="color"
+                value={form.primaryColor ?? '#3463a6'}
+                onChange={(e) => {
+                  update('primaryColor', e.target.value)
+                  applyBrandColor(e.target.value)
+                }}
+                hint="School brand color. Applied across the admin interface."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  update('primaryColor', null)
+                  applyBrandColor(null)
+                }}
+              >
+                Default
+              </Button>
+            </div>
+            <div className="space-y-3">
+              <label className="mb-1.5 block text-xs font-medium text-slate-700">Logo</label>
+              {form.logoUrl && (
+                <div className="flex items-center gap-3">
+                  <img
+                    src={form.logoUrl}
+                    alt="School logo"
+                    className="h-10 w-auto rounded border border-slate-200 bg-slate-50"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    icon={<X className="h-3.5 w-3.5" />}
+                    onClick={() => {
+                      update('logoUrl', null)
+                      setDirty(true)
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              )}
+              <input
+                accept="image/*"
+                type="file"
+                disabled={logoUploading}
+                className="block w-full text-sm text-slate-700 file:mr-3 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[var(--cb-primary-bg)] file:text-[var(--cb-primary-deep)] hover:file:bg-[var(--cb-primary-a15)] disabled:file:bg-slate-200 disabled:file:text-slate-400 disabled:cursor-not-allowed"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setLogoUploading(true)
+                  setLogoErrorRaw(null)
+                  void systemApi
+                    .uploadLogo(file)
+                    .then(({ logoUrl }) => {
+                      update('logoUrl', logoUrl)
+                      setDirty(true)
+                      e.target.value = ''
+                      setLogoUploading(false)
+                    })
+                    .catch((received) => {
+                      setLogoErrorRaw(received)
+                      setLogoUploading(false)
+                      e.target.value = ''
+                    })
+                }}
+              />
+              {logoError && <p className="mt-1 text-xs text-red-600">{logoError}</p>}
+              {logoUploading && (
+                <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                  <Upload className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden /> Uploading…
+                </p>
+              )}
+            </div>
             <Select
               label="Default time zone"
               value={form.defaultTimezone}
@@ -249,23 +358,213 @@ export function SettingsPage({
         <Panel>
           <PanelHeader title="Maintenance" description="Operations available on this installation" />
           <PanelBody className="space-y-2">
-            {[
-              { icon: Database, label: 'Create database backup', detail: 'Phase 15' },
-              { icon: RotateCcw, label: 'Restore from backup', detail: 'Phase 15' },
-              { icon: Server, label: 'Restart the CBT service', detail: 'Phase 12' },
-              { icon: ShieldCheck, label: 'View installation ID', detail: 'Phase 13' },
-            ].map((row) => (
-              <div
-                key={row.label}
-                className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2.5"
-              >
-                <row.icon aria-hidden className="h-4 w-4 shrink-0 text-slate-400" />
-                <span className="flex-1 text-xs font-medium text-slate-700">{row.label}</span>
-                <Badge tone="neutral" dot={false}>
-                  {row.detail}
-                </Badge>
+            <button
+              type="button"
+              onClick={() => {
+                setBackupCreating(true)
+                void systemApi
+                  .backup()
+                  .then((created) => {
+                    setBackups((prev) => [created, ...prev])
+                  })
+                  .catch(() => {
+                    // The server reports the failure; show a generic message.
+                  })
+                  .finally(() => setBackupCreating(false))
+              }}
+              disabled={backupCreating}
+              className={cn(
+                'flex items-center gap-3 rounded-md border px-3 py-2.5 text-left',
+                backupCreating
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-slate-200 bg-white hover:bg-amber-50 cursor-pointer',
+              )}
+            >
+              <Database
+                aria-hidden
+                className={cn(
+                  'h-4 w-4 shrink-0',
+                  backupCreating ? 'text-slate-400 animate-pulse' : 'text-slate-400',
+                )}
+              />
+              <span className="flex-1 text-xs font-medium">
+                {backupCreating ? 'Creating backup…' : 'Create database backup'}
+              </span>
+              <Badge tone="neutral" dot={false}>
+                Phase 15
+              </Badge>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!backups.length) return
+                setRestoreName(backups[0].name)
+                setConfirmRestore(true)
+              }}
+              disabled={backups.length === 0 || restoring}
+              className={cn(
+                'flex items-center gap-3 rounded-md border px-3 py-2.5 text-left',
+                restoring || backups.length === 0
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-slate-200 bg-white hover:bg-amber-50 cursor-pointer',
+              )}
+            >
+              <RotateCcw
+                aria-hidden
+                className={cn(
+                  'h-4 w-4 shrink-0',
+                  restoring ? 'text-slate-400 animate-pulse' : 'text-slate-400',
+                )}
+              />
+              <span className="flex-1 text-xs font-medium">
+                {restoring ? 'Restoring…' : 'Restore from backup'}
+              </span>
+              <Badge tone="neutral" dot={false}>
+                Phase 15
+              </Badge>
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmRestart(true)}
+              disabled={restarting}
+              className={cn(
+                'flex items-center gap-3 rounded-md border px-3 py-2.5 text-left',
+                restarting
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-slate-200 bg-white hover:bg-amber-50 cursor-pointer',
+              )}
+            >
+              <Server
+                aria-hidden
+                className={cn('h-4 w-4 shrink-0', restarting ? 'text-slate-400' : 'text-slate-400')}
+              />
+              <span className="flex-1 text-xs font-medium">
+                {restarting ? 'Restarting…' : 'Restart the CBT service'}
+              </span>
+              <Badge tone="neutral" dot={false}>
+                Phase 12
+              </Badge>
+            </button>
+
+            {confirmRestart && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-900">
+                  Restarting will stop the CBT server and disconnect every
+                  candidate mid-attempt. The service starts again automatically
+                  once the process exits.
+                </p>
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmRestart(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmRestart(false)
+                      setRestarting(true)
+                      void systemApi.restartService().catch(() => {
+                        // The server is shutting down, so the request fails —
+                        // that is expected. The client will lose connection.
+                      })
+                    }}
+                  >
+                    Restart now
+                  </Button>
+                </div>
               </div>
-            ))}
+            )}
+
+            {confirmRestore && restoreName && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-900">
+                  Restoring will replace every table with the backup from{' '}
+                  <span className="font-mono text-amber-800">{restoreName}</span>. All current
+                  data is lost and candidates are disconnected.
+                </p>
+                {backupsLoading && (
+                  <p className="mt-1 text-xs text-amber-700">Loading backups…</p>
+                )}
+                {!backupsLoading && backups.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-700">No backups available.</p>
+                )}
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={restoring}
+                    onClick={() => setConfirmRestore(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    disabled={restoring}
+                    onClick={() => {
+                      setConfirmRestore(false)
+                      setRestoring(true)
+                      void systemApi
+                        .restoreBackup(restoreName!)
+                        .catch(() => {
+                          // Server reports the failure.
+                        })
+                        .finally(() => setRestoring(false))
+                    }}
+                  >
+                    Restore now
+                  </Button>
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (installationId) {
+                  void navigator.clipboard.writeText(installationId)
+                  setCopying(true)
+                  setTimeout(() => setCopying(false), 1500)
+                }
+              }}
+              disabled={installationLoading || !installationId}
+              className={cn(
+                'flex items-center gap-3 rounded-md border px-3 py-2.5 text-left',
+                installationLoading || !installationId
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-slate-200 bg-white hover:bg-amber-50 cursor-pointer',
+              )}
+            >
+              <ShieldCheck
+                aria-hidden
+                className={cn(
+                  'h-4 w-4 shrink-0',
+                  installationLoading ? 'text-slate-400 animate-pulse' : 'text-slate-400',
+                )}
+              />
+              <span className="flex-1 text-xs font-medium">
+                {installationLoading ? 'Loading…' : 'View installation ID'}
+              </span>
+              <Badge tone="neutral" dot={false}>
+                Phase 13
+              </Badge>
+            </button>
+
+            {installationId && copying && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-medium text-emerald-900">
+                  Installation ID copied to clipboard.
+                </p>
+              </div>
+            )}
           </PanelBody>
         </Panel>
       </div>

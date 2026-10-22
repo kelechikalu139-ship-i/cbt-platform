@@ -21,6 +21,9 @@ logs/
 *.log
 npm-debug.log*
 
+# User uploads (logos, ...)
+uploads/
+
 # Prisma local artefacts
 server/prisma/*.db
 server/prisma/*.db-journal

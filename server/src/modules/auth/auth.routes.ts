@@ -2,12 +2,13 @@ import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.js'
 import { authLimiter } from '../../middleware/rate-limit.js'
 import { validate } from '../../middleware/validate.js'
-import { changePasswordSchema, loginSchema, logoutSchema, refreshSchema, studentLoginSchema } from './auth.schema.js'
+import { changePasswordSchema, loginSchema, logoutSchema, refreshSchema, registerSchema, studentLoginSchema } from './auth.schema.js'
 import {
   changePasswordController,
   loginController,
   logoutController,
   meController,
+  registerController,
   refreshController,
   studentLoginController,
 } from './auth.controller.js'
@@ -22,6 +23,7 @@ export const authRouter = Router()
 
 authRouter.post('/login', authLimiter, validate({ body: loginSchema }), loginController)
 authRouter.post('/student-login', authLimiter, validate({ body: studentLoginSchema }), studentLoginController)
+authRouter.post('/register', authLimiter, validate({ body: registerSchema }), registerController)
 authRouter.post('/refresh', authLimiter, validate({ body: refreshSchema }), refreshController)
 
 authRouter.post(

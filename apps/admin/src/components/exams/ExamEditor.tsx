@@ -466,7 +466,7 @@ export function ExamEditor({
                         className={
                           'inline-flex h-7 items-center rounded-full border px-3 text-xs font-medium transition-colors ' +
                           (on
-                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            ? 'border-[var(--cb-primary)] bg-[var(--cb-primary-bg)] text-[var(--cb-primary-deep)]'
                             : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50')
                         }
                       >
@@ -479,7 +479,7 @@ export function ExamEditor({
                     .map((name) => (
                       <span
                         key={name}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-brand-500 bg-brand-50 px-3 text-xs font-medium text-brand-700"
+                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--cb-primary)] bg-[var(--cb-primary-bg)] px-3 text-xs font-medium text-[var(--cb-primary-deep)]"
                       >
                         {name}
                         <button
@@ -488,7 +488,7 @@ export function ExamEditor({
                           onClick={() =>
                             setSelectedClasses((prev) => prev.filter((c) => c !== name))
                           }
-                          className="text-brand-400 hover:text-brand-600"
+                          className="text-[var(--cb-primary-a40)] hover:text-[var(--cb-primary-deep)]"
                         >
                           <Trash2 className="h-3 w-3" aria-hidden />
                         </button>
@@ -570,7 +570,7 @@ export function ExamEditor({
                       className={
                         'inline-flex h-7 items-center gap-1.5 rounded px-3 text-xs font-medium transition-colors ' +
                         (sourceMode === option.value
-                          ? 'bg-brand-600 text-white'
+                          ? 'bg-[var(--cb-primary)] text-[var(--cb-primary-text)]'
                           : 'bg-white text-slate-600 hover:bg-slate-50')
                       }
                     >

@@ -188,6 +188,8 @@ export interface ConfirmDialogProps {
   /** Styles the confirm button as destructive. */
   destructive?: boolean
   loading?: boolean
+  /** Optional content rendered between the message and the footer buttons. */
+  children?: ReactNode
 }
 
 /**
@@ -204,6 +206,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   destructive = false,
   loading = false,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Modal
@@ -227,6 +230,7 @@ export function ConfirmDialog({
       }
     >
       <div className="text-sm leading-relaxed text-slate-600">{message}</div>
+      {children && <div className="mt-3 space-y-2">{children}</div>}
     </Modal>
   )
 }

@@ -10,6 +10,9 @@ export interface HeaderProps {
   onOpenNav: () => void
   /** True while the Node API is unreachable, shown as a persistent banner. */
   offline?: boolean
+  /** Institution logo (public URL) and primary colour, from system settings. */
+  logoUrl: string | null
+  primaryColor: string | null
 }
 
 /**
@@ -18,7 +21,12 @@ export interface HeaderProps {
  * Deliberately sparse. Administrators use this screen for orientation, and any
  * persistent noise here competes with the page content below it.
  */
-export function Header({ onOpenNav, offline = false }: HeaderProps) {
+export function Header({
+  onOpenNav,
+  offline = false,
+  logoUrl = null,
+  primaryColor = null,
+}: HeaderProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
@@ -57,8 +65,34 @@ export function Header({ onOpenNav, offline = false }: HeaderProps) {
         <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
           <ol className="flex items-center gap-1.5 text-xs">
             <li>
-              <Link to="/" className="text-slate-500 hover:text-slate-700">
-                CBT
+              <Link
+                to="/"
+                className={cn(
+                  'flex items-center gap-1.5',
+                  primaryColor && 'text-[var(--cb-primary-deep)] hover:text-[var(--cb-primary)]',
+                  !primaryColor && 'text-slate-500 hover:text-slate-700',
+                )}
+              >
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt=""
+                    className="h-6 w-auto rounded border border-slate-200 bg-slate-50"
+                  />
+                ) : (
+                  <span
+                    className={cn(
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--cb-primary-bg)]',
+                      primaryColor && 'text-[var(--cb-primary-deep)]',
+                      !primaryColor && 'text-brand-700',
+                    )}
+                  >
+                    C
+                  </span>
+                )}
+                <span className="hidden sm:inline font-semibold text-xs">
+                  CBT
+                </span>
               </Link>
             </li>
             {current && current.path !== '/' && (
@@ -103,12 +137,15 @@ export function Header({ onOpenNav, offline = false }: HeaderProps) {
                 type="button"
                 className={cn(
                   'flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-slate-100',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)]',
                 )}
               >
                 <span
                   aria-hidden
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-2xs font-semibold text-brand-700"
+                  className={cn(
+                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--cb-primary-bg)] text-2xs font-semibold',
+                    primaryColor ? 'text-[var(--cb-primary-deep)]' : 'text-brand-700',
+                  )}
                 >
                   {initials(user?.fullName)}
                 </span>

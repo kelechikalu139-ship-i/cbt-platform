@@ -11,8 +11,10 @@ import {
   idParamSchema,
   updateExamSchema,
 } from './exams.schema.js'
+import { monitoringRouter } from '../monitoring/monitoring.routes.js'
 import {
   createExam,
+  archiveExam,
   deleteExam,
   getExam,
   listExams,
@@ -30,6 +32,10 @@ const contextOf = (req: Request) => ({
 })
 
 export const examsRouter = Router()
+
+// Live monitoring and invigilator actions mount first: their paths are
+// static (`/sessions/live`) and must not be shadowed by `/:id`.
+examsRouter.use(monitoringRouter)
 
 examsRouter.get(
   '/',
@@ -103,5 +109,16 @@ examsRouter.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params as { id: string }
     sendData(res, await unpublishExam(id, contextOf(req)), 200, 'Examination unpublished')
+  }),
+)
+
+/** Archive an exam — soft-delete even when it has student attempts. */
+examsRouter.post(
+  '/:id/archive',
+  requirePermission(PERMISSIONS.EXAMS_DELETE),
+  validate({ params: idParamSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string }
+    sendData(res, await archiveExam(id, contextOf(req)), 200, 'Examination archived')
   }),
 )

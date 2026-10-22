@@ -507,3 +507,45 @@ export async function deleteExam(
 
   return { id, deleted: true }
 }
+
+/**
+ * Archive an examination.
+ *
+ * Soft-deletes the exam and sets its status to `ARCHIVED` even when it has
+ * recorded student attempts — unlike delete/unpublish, which are blocked once
+ * a paper has been sat. Archived exams no longer appear in the active list,
+ * but their results remain intact for reporting.
+ */
+export async function archiveExam(
+  id: string,
+  context: { actorId: string; ipAddress?: string | null; userAgent?: string | null },
+) {
+  const existing = await prisma.exam.findUnique({
+    where: { id },
+    select: { id: true, title: true, deletedAt: true, status: true },
+  })
+
+  if (!existing || existing.deletedAt !== null) {
+    throw ApiError.notFound('Examination not found')
+  }
+  if (existing.status === 'ARCHIVED') {
+    throw ApiError.conflict('This examination is already archived')
+  }
+
+  await prisma.exam.update({
+    where: { id },
+    data: { deletedAt: new Date(), status: 'ARCHIVED' },
+  })
+
+  await recordAudit({
+    actorId: context.actorId,
+    action: AUDIT_ACTIONS.ARCHIVE_EXAM,
+    entity: 'Exam',
+    entityId: id,
+    description: `Archived exam "${existing.title}"`,
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  })
+
+  return { id, archived: true }
+}

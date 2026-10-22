@@ -7,6 +7,7 @@ import {
   ErrorState,
   FilterSelect,
   HorizontalBarList,
+  Modal,
   PageHeader,
   Pagination,
   Panel,
@@ -77,6 +78,7 @@ export function ResultsPage({
 }: ResultsPageProps) {
   const table = useTableState<{ outcome: string; grade: string }>({ outcome: 'all', grade: 'all' })
   const [search, setSearch] = useState('')
+  const [printResult, setPrintResult] = useState<Result | null>(null)
   const debounced = useDebouncedValue(search, 300)
 
   const visible = useMemo(() => {
@@ -199,12 +201,32 @@ export function ResultsPage({
         <StatusBadge status={r.passed ? 'passed' : 'failed'} label={r.passed ? 'Passed' : 'Failed'} />
       ),
     },
+    {
+      key: 'print',
+      header: '',
+      width: 'w-20',
+      align: 'center',
+      cell: (r) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Printer className="h-3.5 w-3.5" />}
+          onClick={(e) => {
+            e.stopPropagation()
+            setPrintResult(r)
+          }}
+        >
+          Print
+        </Button>
+      ),
+    },
   ]
 
   const maxGrade = Math.max(1, ...summary.gradeDistribution.map((g) => g.count))
 
   return (
-    <div className="space-y-5">
+    <>
+      <div className="space-y-5">
       <PageHeader
         title="Results"
         description="Review submissions, performance and reporting across all examinations."
@@ -223,7 +245,7 @@ export function ResultsPage({
               icon={<Printer className="h-4 w-4" />}
               onClick={() => window.print()}
             >
-              Print
+              Print all
             </Button>
             <Button
               size="sm"
@@ -368,5 +390,62 @@ export function ResultsPage({
         )}
       </Panel>
     </div>
+
+    {printResult && (
+      <Modal
+        open
+        onClose={() => setPrintResult(null)}
+        title={`Result — ${printResult.studentName}`}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            {printResult.studentName} ({printResult.studentId_}) —{' '}
+            {printResult.examName}
+          </p>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-2xs text-slate-500">Score</p>
+              <p className="font-medium">{printResult.percentage}%</p>
+            </div>
+            <div>
+              <p className="text-2xs text-slate-500">Grade</p>
+              <p className="font-medium">{printResult.grade}</p>
+            </div>
+            <div>
+              <p className="text-2xs text-slate-500">Correct</p>
+              <p className="font-medium">
+                {printResult.correctAnswers}/{printResult.totalQuestions}
+              </p>
+            </div>
+            <div>
+              <p className="text-2xs text-slate-500">Marks</p>
+              <p className="font-medium">
+                {printResult.marksObtained}/{printResult.totalMarks}
+              </p>
+            </div>
+            <div>
+              <p className="text-2xs text-slate-500">Status</p>
+              <p className="font-medium">
+                {printResult.passed ? 'Passed' : 'Failed'}
+              </p>
+            </div>
+            <div>
+              <p className="text-2xs text-slate-500">Submitted</p>
+              <p className="font-medium">
+                {formatDateTime(printResult.submittedAt)}
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setPrintResult(null)}>
+              Close
+            </Button>
+            <Button onClick={() => window.print()}>Print this result</Button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   )
 }

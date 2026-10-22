@@ -192,7 +192,7 @@ function buildPayload(state: QuestionFormState): QuestionInput {
 }
 
 const inputClass =
-  'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-50'
+  'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--cb-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--cb-primary)] disabled:cursor-not-allowed disabled:bg-slate-50'
 
 export function QuestionEditor({
   open,
@@ -453,7 +453,7 @@ export function QuestionEditor({
                         onChange={() =>
                           setForm((f) => ({ ...f, correctOptionIndex: i }))
                         }
-                        className="h-4 w-4 cursor-pointer text-brand-600 focus:ring-brand-500"
+                        className="h-4 w-4 cursor-pointer text-[var(--cb-primary-deep)] focus:ring-[var(--cb-primary)]"
                       />
                       <span className="text-xs text-slate-600">Correct</span>
                     </label>

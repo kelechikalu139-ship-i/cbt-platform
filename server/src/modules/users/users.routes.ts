@@ -189,6 +189,18 @@ usersRouter.post(
       })
     }
 
+    // Only one super administrator may exist: it is the installation owner.
+    if (input.roleCode === 'SUPER_ADMIN') {
+      const superAdminCount = await prisma.user.count({
+        where: { role: { code: 'SUPER_ADMIN' }, deletedAt: null },
+      })
+      if (superAdminCount > 0) {
+        throw ApiError.conflict('A super administrator already exists. Only one is allowed per installation.', {
+          roleCode: ['A super administrator already exists for this installation.'],
+        })
+      }
+    }
+
     const passwordHash = await hashPassword(input.password)
 
     const user = await prisma.user.create({

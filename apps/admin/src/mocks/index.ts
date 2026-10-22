@@ -18,10 +18,18 @@ import type {
   SystemSettings,
   SystemStatus,
   User,
+  UserInput,
 } from '../types'
 import type { LoginResponse } from '../services/admin.api'
 import { paginate, matchesSearch } from '../utils'
 import * as fx from './fixtures'
+
+/**
+ * Re-exported so the service layer can share the register's derived
+ * aggregates (dashboard counters, live attempts) instead of
+ * reimplementing them a second time.
+ */
+export { fx }
 
 /**
  * Mock implementations of every admin endpoint.
@@ -108,8 +116,10 @@ export const mockDashboardApi = {
         status: exam.status,
         questionCount: exam.questionCount,
       })),
-      activeSessions: [],
-      subjectPerformance: [],
+      // Representative in-progress attempts so the dashboard panel and
+      // the monitor render exactly as they do against the live API.
+      activeSessions: fx.liveSessions(),
+      subjectPerformance: fx.getSubjectPerformance(),
       license: null,
       todayExams: fx.getDashboardCounters().publishedExams,
       generatedAt: new Date().toISOString(),
@@ -147,6 +157,7 @@ export const mockSystemApi = {
         exams: fx.exams.length,
         results: fx.results.length,
       },
+      installationId: fx.installationId,
       timestamp: new Date().toISOString(),
     }),
 
@@ -223,6 +234,21 @@ export const mockStudentsApi = {
     // In mock mode, just toggle the flag
     found.hasActiveSession = false
     return respond(undefined)
+  },
+
+  removeByFilter: (filter: { className?: string; examId?: string }): Promise<{ deleted: number }> => {
+    let rows = [...fx.students]
+    const before = rows.length
+    if (filter.className) {
+      rows = rows.filter((s) => s.className !== filter.className)
+    }
+    if (filter.examId) {
+      // Mock register has no exam-session link on students; nothing to delete by exam.
+      return respond({ deleted: 0 })
+    }
+    const deleted = before - rows.length
+    fx.students.splice(0, fx.students.length, ...rows)
+    return respond({ deleted })
   },
 }
 
@@ -443,6 +469,13 @@ export const mockExamsApi = {
 
     return respond({ ...found, questions: paper })
   },
+
+  /** Archive an exam (mock: marks it archived in fixtures). */
+  archive: (id: string): Promise<{ id: string; archived: true }> => {
+    const found = fx.exams.find((e) => e.id === id)
+    if (!found) return notFound<{ id: string; archived: true }>('Exam')
+    return respond({ id, archived: true })
+  },
 }
 
 /* -------------------------------------------------------------------------- */
@@ -466,6 +499,31 @@ export const mockResultsApi = {
   get: (id: string): Promise<Result> => {
     const found = fx.results.find((r) => r.id === id)
     return found ? respond(found) : notFound<Result>('Result')
+  },
+
+  /** CSV text of every result, newest first. */
+  exportCsv: (): Promise<string> => {
+    const header = [
+      'Student ID',
+      'Student Name',
+      'Class',
+      'Level',
+      'Examination',
+      'Total Questions',
+      'Correct',
+      'Wrong',
+      'Unanswered',
+      'Marks Obtained',
+      'Total Marks',
+      'Percentage',
+      'Grade',
+      'Passed',
+      'Time Spent (seconds)',
+      'Submitted At',
+    ].join(',')
+    const rows = [...fx.results].sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)))
+    const lines = [header, ...rows.map((r) => [r.studentId_, r.studentName, r.className ?? '', r.level, r.examName, r.totalQuestions, r.correctAnswers, r.wrongAnswers, r.unansweredQuestions, r.marksObtained, r.totalMarks, r.percentage, r.grade, r.passed ? 'Yes' : 'No', r.timeSpentSeconds, r.submittedAt].join(','))]
+    return respond(lines.join('\n'))
   },
 
   summary: () =>
@@ -529,6 +587,38 @@ export const mockUsersApi = {
   },
 
   me: (): Promise<User> => respond(fx.currentUser),
+
+  create: (payload: UserInput): Promise<User> => {
+    const newUser: User = {
+      id: `usr-${String(fx.users.length + 1).padStart(5, '0')}`,
+      email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      fullName: `${payload.firstName} ${payload.lastName}`,
+      role: payload.roleCode,
+      roleName: payload.roleCode,
+      status: payload.status,
+      isLocked: false,
+      lastLoginAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as User
+    fx.users.push(newUser)
+    return respond(newUser)
+  },
+
+  update: (id: string, payload: Partial<UserInput & { status?: string; roleCode?: string }>): Promise<User> => {
+    const u = fx.users.find((x) => x.id === id)
+    if (!u) throw new Error('User not found')
+    if (payload.firstName) u.firstName = payload.firstName
+    if (payload.lastName) u.lastName = payload.lastName
+    if (payload.email) u.email = payload.email
+    if (payload.status) u.status = payload.status as User['status']
+    if (payload.roleCode) { u.role = payload.roleCode as User['role']; u.roleName = payload.roleCode }
+    u.fullName = `${u.firstName} ${u.lastName}`
+    u.updatedAt = new Date().toISOString()
+    return respond(u)
+  },
 
   /**
    * Mirrors the real endpoint's contract: any non-empty identifier and password

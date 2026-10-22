@@ -5,6 +5,7 @@ import type {
   EntityStatus,
   Exam,
   ExamSession,
+  LiveExamSession,
   Permission,
   Question,
   Result,
@@ -643,6 +644,7 @@ export const appBuildDate = daysFromNow(-9)
  * identically in both modes.
  */
 export function getDashboardCounters() {
+  const live = liveSessions()
   return {
     totalStudents: students.length,
     activeStudents: students.filter((s) => s.status === 'ACTIVE').length,
@@ -656,7 +658,45 @@ export function getDashboardCounters() {
     completedExams: exams.filter((e) => e.status === 'COMPLETED').length,
     totalResults: results.length,
     totalUsers: users.length,
+    liveSessions: live.length,
+    signedInStudents: students.filter((s) => s.hasActiveSession).length,
   }
+}
+
+/**
+ * Attempts currently in progress, for the live monitor and dashboard.
+ *
+ * The register has no exam engine, so these are representative rows
+ * rather than live data — enough to render the monitor's countdown,
+ * progress and action column the way the real API does.
+ */
+export function liveSessions(): LiveExamSession[] {
+  const writing = students.filter((s) => s.status === 'ACTIVE').slice(0, 2)
+  const paper = exams.find((e) => e.status === 'PUBLISHED' || e.status === 'ONGOING') ?? exams[0]!
+  const now = Date.now()
+
+  return writing.map((student, i) => ({
+    sessionId: `ses-live-${i + 1}`,
+    examId: paper.id,
+    examTitle: paper.title,
+    studentId: student.studentId,
+    studentRecordId: student.id,
+    studentName: student.fullName,
+    admissionNumber: student.studentId,
+    className: student.className,
+    program: student.program,
+    session: student.session,
+    attemptNumber: 1,
+    status: 'IN_PROGRESS',
+    startedAt: new Date(now - (12 + i * 7) * 60_000).toISOString(),
+    expiresAt: new Date(now + (48 - i * 17) * 60_000).toISOString(),
+    secondsRemaining: (48 - i * 17) * 60,
+    answeredCount: 6 + i * 3,
+    totalQuestions: 12,
+    violationCount: i === 1 ? 2 : 0,
+    lastIpAddress: `10.8.0.${21 + i}`,
+    lastSavedAt: new Date(now - 20_000).toISOString(),
+  }))
 }
 
 /**

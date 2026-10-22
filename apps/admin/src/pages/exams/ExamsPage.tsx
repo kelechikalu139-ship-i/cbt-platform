@@ -1,6 +1,6 @@
-import { CalendarDays, CheckCircle2, ClipboardList, Copy, MoreHorizontal, Pencil, Plus, Trash2, Undo2, X } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ClipboardList, Copy, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Undo2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
   Badge,
@@ -9,8 +9,10 @@ import {
   Dropdown,
   DropdownDivider,
   DropdownItem,
+  EmptyState,
   ErrorState,
   FilterSelect,
+  LoadingState,
   Modal,
   PageHeader,
   Pagination,
@@ -24,7 +26,7 @@ import {
   type Column,
 } from '../../components/ui'
 import { ExamEditor } from '../../components/exams/ExamEditor'
-import { ApiError, examMutations } from '../../services'
+import { ApiError, examMutations, examSessionMutations, examsApi } from '../../services'
 import {
   EXAM_STATUS_LABELS,
   type Category,
@@ -64,20 +66,51 @@ const STATUS_OPTIONS = [
  * These are separate booleans on `Exam`, not a nested `rules` object, so a rule
  * the backend drops simply stops being shown here rather than rendering blank.
  */
-function RuleChips({ exam }: { exam: Exam }) {
-  const chips: Array<{ label: string; on: boolean }> = [
+function RuleChips({
+  exam,
+  onToggleShowResultImmediately,
+}: {
+  exam: Exam
+  /** Fired when the administrator clicks the “Show result immediately” chip. */
+  onToggleShowResultImmediately?: (next: boolean) => void
+}) {
+  const chips: Array<{ label: string; on: boolean; clickable?: boolean }> = [
     { label: 'Shuffle questions', on: exam.shuffleQuestions },
     { label: 'Shuffle options', on: exam.shuffleOptions },
-    { label: 'Show result immediately', on: exam.showResultImmediately },
+    {
+      label: 'Show result immediately',
+      on: exam.showResultImmediately,
+      clickable: Boolean(onToggleShowResultImmediately),
+    },
   ]
 
   return (
     <div className="flex flex-wrap gap-1">
-      {chips.map((chip) => (
-        <Badge key={chip.label} tone={chip.on ? 'brand' : 'neutral'} dot={false}>
-          {chip.on ? chip.label : `No ${chip.label.toLowerCase()}`}
-        </Badge>
-      ))}
+      {chips.map((chip) => {
+        const isClickable = chip.clickable && chip.label === 'Show result immediately'
+        const badge = (
+          <Badge
+            key={chip.label}
+            tone={chip.on ? 'brand' : 'neutral'}
+            dot={false}
+            className={isClickable ? 'cursor-pointer hover:bg-slate-100 transition-colors' : undefined}
+          >
+            {chip.on ? chip.label : `No ${chip.label.toLowerCase()}`}
+          </Badge>
+        )
+        if (!isClickable) return badge
+        return (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={() => onToggleShowResultImmediately!(!chip.on)}
+            aria-pressed={chip.on}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2 py-0.5 text-2xs font-medium ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/20 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)] focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {chip.on ? chip.label : `No ${chip.label.toLowerCase()}`}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -112,8 +145,9 @@ export function ExamsPage({
   const [duplicateTarget, setDuplicateTarget] = useState<Exam | null>(null)
   /** The paper pending a delete confirmation. */
   const [deleteTarget, setDeleteTarget] = useState<Exam | null>(null)
+  /** The paper whose attempts are being reset. */
+  const [resetTarget, setResetTarget] = useState<Exam | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
-
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['exams'] })
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -209,7 +243,7 @@ export function ExamsPage({
             {e.level ? ` · ${e.level} level` : ''}
             {e.semester ? ` · semester ${e.semester}` : ''}
             {(e.classes ?? []).length > 0 && (
-              <span className="text-brand-600">
+              <span className="text-[var(--cb-primary-deep)]">
                 {' '}· {(e.classes as string[]).join(', ')}
               </span>
             )}
@@ -324,6 +358,12 @@ export function ExamsPage({
           )}
           <DropdownDivider />
           <DropdownItem
+            icon={<RotateCcw className="h-3.5 w-3.5" />}
+            onClick={() => setResetTarget(e)}
+          >
+            Reset attempts
+          </DropdownItem>
+          <DropdownItem
             icon={<Copy className="h-3.5 w-3.5" />}
             onClick={() => setDuplicateTarget(e)}
           >
@@ -363,7 +403,7 @@ export function ExamsPage({
               setCreateOpen(true)
               setMutationError(null)
             }}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand-600 px-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 text-sm font-medium shadow-sm transition-colors hover:bg-[var(--cb-primary-dark)]"
           >
             <Plus className="h-4 w-4" />
             Create exam
@@ -445,6 +485,9 @@ export function ExamsPage({
           setEditTarget(e)
           setDetail(null)
         }}
+        onToggleShowResultImmediately={(next) =>
+          detail && updateMutation.mutate({ id: detail.id, payload: { showResultImmediately: next } })
+        }
       />
 
       {/* Create and duplicate share the dialog: a duplicate
@@ -496,6 +539,8 @@ export function ExamsPage({
             : ''
         }
       />
+
+      <ResetAttemptsDialog exam={resetTarget} onClose={() => setResetTarget(null)} />
     </div>
   )
 }
@@ -506,11 +551,14 @@ function ExamDetail({
   exam,
   onClose,
   onEdit,
+  onToggleShowResultImmediately,
 }: {
   exam: Exam | null
   onClose: () => void
   /** Opens the editor for a draft paper. */
   onEdit?: (exam: Exam) => void
+  /** Toggles “show result immediately” on the paper. */
+  onToggleShowResultImmediately?: (next: boolean) => void
 }) {
   return (
     <Modal
@@ -532,7 +580,7 @@ function ExamDetail({
             <button
               type="button"
               onClick={() => onEdit(exam)}
-              className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--cb-primary-dark)]"
             >
               Edit examination
             </button>
@@ -599,7 +647,7 @@ function ExamDetail({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Examination rules
             </h3>
-            <RuleChips exam={exam} />
+            <RuleChips exam={exam} onToggleShowResultImmediately={onToggleShowResultImmediately} />
           </div>
 
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
@@ -625,4 +673,154 @@ function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message
   const anyErr = err as { response?: { data?: { message?: string } } }
   return anyErr?.response?.data?.message ?? 'The request failed. Check the values and try again.'
+}
+
+/**
+ * Reset attempts on one paper.
+ *
+ * The candidate list comes from the server rather than the students
+ * table, so only names who have actually attempted this paper can be
+ * picked — resetting a candidate who never sat it would be meaningless.
+ */
+function ResetAttemptsDialog({ exam, onClose }: { exam: Exam | null; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [selected, setSelected] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const attempts = useQuery({
+    queryKey: ['exam-attempts', exam?.id],
+    queryFn: () => examsApi.examAttempts(exam!.id),
+    enabled: exam !== null,
+  })
+
+  const reset = useMutation({
+    mutationFn: () => examSessionMutations.resetAttempts(exam!.id, selected),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['exams'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['exam-attempts', exam?.id] })
+      onClose()
+    },
+    onError: (err: unknown) => setError(errorMessage(err)),
+  })
+
+  const rows = attempts.data ?? []
+  const resetAll = selected.length === 0
+
+  return (
+    <Modal
+      open={exam !== null}
+      onClose={onClose}
+      title="Reset attempts"
+      description={exam?.title}
+      size="lg"
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="reset-attempts-form"
+            disabled={reset.isPending || attempts.isPending || rows.length === 0}
+            className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-[var(--cb-primary-dark)] disabled:opacity-50"
+          >
+            {reset.isPending ? 'Resetting…' : 'Reset attempts'}
+          </button>
+        </>
+      }
+    >
+      <form
+        id="reset-attempts-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          reset.mutate()
+        }}
+        className="space-y-4"
+      >
+        {error && (
+          <p className="rounded-md bg-[var(--cb-primary-bg)] px-3 py-2 text-sm text-[var(--cb-primary-deep)]">{error}</p>
+        )}
+
+        {attempts.isPending ? (
+          <LoadingState label="Loading attempts…" rows={3} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title="No attempts yet"
+            description="Nobody has attempted this paper, so there is nothing to reset."
+          />
+        ) : (
+          <>
+            <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+              <input
+                type="checkbox"
+                checked={resetAll}
+                onChange={(e) => setSelected(e.target.checked ? [] : rows.map((r) => r.admissionNumber))}
+              />
+              <span className="text-sm font-medium text-slate-700">
+                Reset every candidate ({rows.length})
+              </span>
+            </label>
+
+            <div className="max-h-64 overflow-auto rounded-md border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-slate-100">
+                  <tr>
+                    <th className="px-3 py-2 w-8" />
+                    <th className="px-3 py-2">Candidate</th>
+                    <th className="px-3 py-2">Class</th>
+                    <th className="px-3 py-2">Attempts</th>
+                    <th className="px-3 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rows.map((row) => {
+                    const checked = selected.includes(row.admissionNumber)
+                    return (
+                      <tr key={row.studentRecordId}>
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setSelected((current) =>
+                                current.includes(row.admissionNumber)
+                                  ? current.filter((id) => id !== row.admissionNumber)
+                                  : [...current, row.admissionNumber],
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-slate-800">{row.studentName}</p>
+                          <p className="tabular text-2xs text-slate-500">{row.admissionNumber}</p>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{row.className ?? '—'}</td>
+                        <td className="px-3 py-2 tabular text-slate-600">{row.attempts}</td>
+                        <td className="px-3 py-2">
+                          <Badge tone={row.isLive ? 'warning' : 'neutral'}>
+                            {row.isLive ? 'Writing' : 'Submitted'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-2xs leading-relaxed text-slate-500">
+              {resetAll
+                ? 'Every attempt on this paper — and its results — will be deleted, so all listed candidates may sit it again. Any portal sign-in left behind on a candidate\'s device is ended, so nobody is refused with "already signed in on another device".'
+                : `${selected.length} candidate${selected.length === 1 ? '' : 's'} selected: their attempts and results on this paper will be deleted, and they may sit it again. Their portal sign-in is ended too, so a frozen device cannot block the fresh one.`}
+            </p>
+          </>
+        )}
+      </form>
+    </Modal>
+  )
 }

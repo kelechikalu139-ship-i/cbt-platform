@@ -1,7 +1,7 @@
 import { prisma } from '../../config/database.js'
 import { logger } from '../../config/logger.js'
 import { ApiError } from '../../utils/api-error.js'
-import { comparePassword, hashPassword } from '../../utils/password.js'
+import { comparePassword, assertPasswordAcceptable, hashPassword } from '../../utils/password.js'
 import { randomBytes } from 'node:crypto'
 import { env } from '../../config/env.js'
 import {
@@ -14,7 +14,8 @@ import {
   verifyRefreshToken,
 } from '../../utils/tokens.js'
 import { AUDIT_ACTIONS, recordAudit, recordAuditInTransaction } from '../../services/audit.service.js'
-import type { ChangePasswordInput, LoginInput } from './auth.schema.js'
+import { ROLE_CODES } from '../../constants/permissions.js'
+import type { ChangePasswordInput, LoginInput, RegisterInput } from './auth.schema.js'
 import type { Prisma } from '@prisma/client'
 
 /**
@@ -241,47 +242,40 @@ export async function login(input: LoginInput, context: RequestContext): Promise
     throw ApiError.unauthorized(GENERIC_CREDENTIAL_ERROR, 'AUTH_INVALID_CREDENTIALS')
   }
 
+  // --- Staff-only gate ----------------------------------------------------
+  // The admin login endpoint is for staff accounts. Students sign in through
+  // the student portal (`/auth/student-login`), which provisions matric-only
+  // accounts and enforces the single-session rule. A student with a portal
+  // password must not be able to authenticate here and reach staff-only pages.
+  if (user.role.code === 'STUDENT') {
+    await recordAudit({
+      actorId: user.id,
+      action: AUDIT_ACTIONS.LOGIN_FAILED,
+      description: 'Student attempted to sign in through the staff login endpoint',
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      success: false,
+    })
+    throw new ApiError(
+      403,
+      'This account is a student portal account. Use the student portal to sign in.',
+      'STUDENT_USE_PORTAL',
+    )
+  }
+
   // --- Issue session -----------------------------------------------------
   const now = new Date()
-  const isStudent = user.role.code === 'STUDENT'
-  let sessionId: string | undefined
-  let sessionHash: string | undefined
-  let sessionExpiresAt: Date | undefined
-
-  if (isStudent) {
-    // Single-session gate: refuse a new sign-in if an existing session is still live.
-    if (user.sessionHash && user.sessionExpiresAt && user.sessionExpiresAt > now) {
-      await recordAudit({
-        actorId: user.id,
-        action: AUDIT_ACTIONS.LOGIN_FAILED,
-        description: 'Sign-in refused: student already signed in on another device',
-        metadata: { existingSessionExpiresAt: user.sessionExpiresAt.toISOString() },
-        ipAddress: context.ipAddress,
-        userAgent: context.userAgent,
-        success: false,
-      })
-      throw new ApiError(
-        409,
-        'This account is already signed in on another device. Sign out there first, or ask your administrator to end the session.',
-        'SESSION_ACTIVE',
-      )
-    }
-    sessionId = newSessionId()
-    sessionHash = hashTokenDigest(sessionId)
-    sessionExpiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS)
-  }
 
   const access = signAccessToken({
     sub: user.id,
     email: user.email,
     role: user.role.code,
-    ...(isStudent ? { sid: sessionId } : {}),
   })
-  const refresh = signRefreshToken(user.id, isStudent ? sessionId : undefined)
+  const refresh = signRefreshToken(user.id)
   const refreshDigest = hashTokenDigest(refresh.token)
 
-  // The sign-in record and the session update share one transaction so a
-  // successful sign-in always leaves an audit trail (§22).
+  // The sign-in record shares one transaction so a successful sign-in always
+  // leaves an audit trail (§22).
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: user.id },
@@ -290,7 +284,6 @@ export async function login(input: LoginInput, context: RequestContext): Promise
         failedLoginCount: 0,
         lockedUntil: null,
         refreshTokenHash: refreshDigest,
-        ...(isStudent ? { sessionHash, sessionExpiresAt } : {}),
       },
     })
 
@@ -307,6 +300,107 @@ export async function login(input: LoginInput, context: RequestContext): Promise
   })
 
   logger.info({ userId: user.id, role: user.role.code }, 'user signed in')
+
+  return {
+    user: await toPublicUser(user),
+    accessToken: access.token,
+    refreshToken: refresh.token,
+    expiresIn: secondsUntilExpiry(access.token),
+    tokenType: 'Bearer',
+  }
+}
+
+/**
+ * One-time super administrator registration.
+ *
+ * Creates the first super administrator on an empty installation. Once an
+ * active super administrator exists this endpoint is permanently closed, so
+ * it can never be used to add a second privileged account — that happens
+ * through the authenticated `/users` endpoint instead.
+ */
+export async function register(
+  input: RegisterInput,
+  context: RequestContext,
+): Promise<AuthResult> {
+  const existing = await prisma.user.count({
+    where: { role: { code: ROLE_CODES.SUPER_ADMIN }, status: 'ACTIVE', deletedAt: null },
+  })
+
+  if (existing > 0) {
+    await recordAudit({
+      action: AUDIT_ACTIONS.REGISTER,
+      description: 'Super administrator registration attempted after one already exists',
+      metadata: { identifier: input.email },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      success: false,
+    })
+    throw new ApiError(
+      410,
+      'Super administrator registration is closed. An administrator already exists.',
+      'REGISTRATION_CLOSED',
+    )
+  }
+
+  const weak = assertPasswordAcceptable(input.password)
+  if (weak) {
+    throw ApiError.validation(weak, { password: [weak] })
+  }
+
+  const role = await prisma.role.findUniqueOrThrow({
+    where: { code: ROLE_CODES.SUPER_ADMIN },
+    select: { id: true },
+  })
+
+  const existingEmail = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true },
+  })
+  if (existingEmail) {
+    throw ApiError.conflict('An account with this email already exists', {
+      email: ['This email is already registered'],
+    })
+  }
+
+  const passwordHash = await hashPassword(input.password)
+
+  const user = await prisma.user.create({
+    data: {
+      email: input.email,
+      passwordHash,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      status: 'ACTIVE',
+      role: { connect: { id: role.id } },
+    },
+    select: userSelect,
+  })
+
+  const access = signAccessToken({
+    sub: user.id,
+    email: user.email,
+    role: user.role.code,
+  })
+  const refresh = signRefreshToken(user.id)
+  const refreshDigest = hashTokenDigest(refresh.token)
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { refreshTokenHash: refreshDigest },
+  })
+
+  await recordAudit({
+    actorId: user.id,
+    action: AUDIT_ACTIONS.REGISTER,
+    entity: 'User',
+    entityId: user.id,
+    description: `Registered first super administrator ${user.email}`,
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+    success: true,
+  })
+
+  logger.info({ userId: user.id, role: user.role.code }, 'first super administrator registered')
 
   return {
     user: await toPublicUser(user),

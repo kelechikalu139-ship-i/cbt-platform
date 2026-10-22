@@ -534,6 +534,23 @@ export async function saveAnswer(
       },
       update: { textAnswer: input.answer },
     })
+  } else if (question.type === 'TRUE_FALSE') {
+    // TRUE_FALSE has no stored options; the answer text is stored directly.
+    const normalised = normaliseTrueFalse(input.answer)
+    if (normalised !== 'TRUE' && normalised !== 'FALSE') {
+      throw ApiError.badRequest('Answer must be True or False')
+    }
+    await prisma.examAnswer.upsert({
+      where: {
+        examSessionId_questionId: { examSessionId: sessionId, questionId: input.questionId },
+      },
+      create: {
+        examSessionId: sessionId,
+        questionId: input.questionId,
+        textAnswer: normalised,
+      },
+      update: { textAnswer: normalised },
+    })
   } else {
     const option = resolveOption(question, input.answer)
     if (!option) {
@@ -599,6 +616,13 @@ function normaliseTrueFalse(text: string): string {
  * ceiling. The whole close-and-grade runs in one transaction so a
  * result can never exist while its session is still open.
  */
+export async function forceFinalizeSession(
+  sessionId: string,
+  finalStatus: 'SUBMITTED' | 'AUTO_SUBMITTED',
+): Promise<void> {
+  await finalizeSession(sessionId, finalStatus)
+}
+
 async function finalizeSession(
   sessionId: string,
   finalStatus: 'SUBMITTED' | 'AUTO_SUBMITTED',
@@ -654,12 +678,13 @@ async function finalizeSession(
       if (!hasAnswer) continue
 
       answered += 1
-      const option = question.options.find((o) => o.id === answer!.selectedOptionId)
-      const isCorrect =
-        option !== undefined &&
-        (question.type === 'TRUE_FALSE'
-          ? normaliseTrueFalse(option.text) === question.correctAnswer.trim().toUpperCase()
-          : option.label === question.correctAnswer.trim().toUpperCase())
+      let isCorrect = false
+      if (question.type === 'TRUE_FALSE') {
+        isCorrect = answer!.textAnswer?.trim().toUpperCase() === question.correctAnswer.trim().toUpperCase()
+      } else {
+        const option = question.options.find((o) => o.id === answer!.selectedOptionId)
+        isCorrect = option !== undefined && option.label === question.correctAnswer.trim().toUpperCase()
+      }
 
       if (isCorrect) {
         correct += 1

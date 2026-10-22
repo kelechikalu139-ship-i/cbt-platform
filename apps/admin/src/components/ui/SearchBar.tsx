@@ -45,7 +45,7 @@ export function SearchBar({
           setDraft(e.target.value)
           onChange(e.target.value)
         }}
-        className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-8 text-sm text-slate-800 placeholder:text-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 [&::-webkit-search-cancel-button]:hidden"
+        className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-8 text-sm text-slate-800 placeholder:text-slate-400 transition-colors focus:border-[var(--cb-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--cb-primary-a30)] [&::-webkit-search-cancel-button]:hidden"
       />
       {draft && (
         <button
@@ -55,7 +55,7 @@ export function SearchBar({
             setDraft('')
             onChange('')
           }}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)]"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -94,7 +94,7 @@ export function FilterSelect({
         aria-label={label}
         className={cn(
           'h-9 cursor-pointer rounded-md border border-slate-300 bg-white pl-2.5 pr-7 text-xs font-medium text-slate-700 transition-colors',
-          'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
+          'focus:border-[var(--cb-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--cb-primary-a30)]',
           width,
         )}
       >

@@ -82,6 +82,11 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   LOG_PRETTY: booleanish.default(true),
 
+  /** Folder uploaded files (logos, ...) are stored in, relative to the server cwd. */
+  UPLOAD_DIR: z.string().min(1).default('./uploads'),
+  /** Largest single upload accepted, in mebibytes. */
+  MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(100).default(5),
+
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(15 * 60 * 1000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
   GLOBAL_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),

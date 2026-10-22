@@ -52,10 +52,18 @@ export function validate(schemas: ValidationSchemas): RequestHandler {
         return
       }
 
-      // Express 5 makes `req.query` a getter-only property in some setups, so
-      // assignment is avoided where possible and mutation is used for objects.
+      // Express 5 exposes `req.query` as a getter-only property, so neither
+      // assignment nor mutating the object it returns is reliable — a
+      // coerced value (a page size, a level) would reach the service as the
+      // original string and a Prisma query would reject it. The parsed value
+      // is therefore defined directly on the request.
       if (source === 'query') {
-        Object.assign(req.query, result.data as Record<string, unknown>)
+        Object.defineProperty(req, 'query', {
+          value: result.data as Record<string, unknown>,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        })
       } else {
         req[source] = result.data as never
       }

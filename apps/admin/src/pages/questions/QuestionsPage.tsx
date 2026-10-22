@@ -352,7 +352,7 @@ export function QuestionsPage({
                 setAddOpen(true)
                 setMutationError(null)
               }}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand-600 px-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 text-sm font-medium shadow-sm transition-colors hover:bg-[var(--cb-primary-dark)]"
             >
               <Plus className="h-4 w-4" />
               Add question
@@ -544,11 +544,11 @@ function QuestionPreview({ question, onClose }: { question: Question | null; onC
           </dl>
 
           {question.explanation && (
-            <div className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2">
-              <p className="text-2xs font-medium uppercase tracking-wide text-brand-700">
+            <div className="rounded-md border border-[var(--cb-primary-a30)] bg-[var(--cb-primary-bg)] px-3 py-2">
+              <p className="text-2xs font-medium uppercase tracking-wide text-[var(--cb-primary-deep)]">
                 Explanation
               </p>
-              <p className="mt-1 text-sm text-brand-900">{question.explanation}</p>
+              <p className="mt-1 text-sm text-[var(--cb-primary-deep)]">{question.explanation}</p>
             </div>
           )}
 
@@ -594,7 +594,7 @@ export function PendingActionModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--cb-primary-dark)]"
         >
           Close
         </button>

@@ -7,8 +7,9 @@ import { categoriesRouter, subjectsRouter } from '../modules/categories/categori
 import { questionsRouter } from '../modules/questions/questions.routes.js'
 import { examsRouter } from '../modules/exams/exams.routes.js'
 import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js'
+import { resultsRouter } from '../modules/results/results.routes.js'
 import { portalRouter } from '../modules/portal/portal.routes.js'
-import { auditRouter, healthRouter, systemRouter } from '../modules/system/system.routes.js'
+import { auditRouter, brandingRouter, healthRouter, systemRouter } from '../modules/system/system.routes.js'
 
 /**
  * API v1 router (§23, §24).
@@ -20,6 +21,7 @@ import { auditRouter, healthRouter, systemRouter } from '../modules/system/syste
 export const apiRouter = Router()
 
 apiRouter.use('/health', healthRouter)
+apiRouter.use('/system/branding', brandingRouter)
 
 // --- Authentication ------------------------------------------------------
 apiRouter.use('/auth', authRouter)
@@ -33,6 +35,7 @@ apiRouter.use('/subjects', subjectsRouter)
 apiRouter.use('/questions', questionsRouter)
 apiRouter.use('/exams', examsRouter)
 apiRouter.use('/dashboard', dashboardRouter)
+apiRouter.use('/results', resultsRouter)
 // The student portal: exam delivery, sessions, results and
 // the candidate's own profile (§55).
 apiRouter.use('/portal', portalRouter)

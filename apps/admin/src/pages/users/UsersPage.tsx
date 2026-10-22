@@ -1,5 +1,6 @@
 import { KeyRound, MoreHorizontal, Pencil, Plus, Shield, Trash2, UserX } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Badge,
   DataTable,
@@ -8,6 +9,7 @@ import {
   DropdownItem,
   ErrorState,
   FilterSelect,
+  Modal,
   PageHeader,
   Pagination,
   Panel,
@@ -25,6 +27,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useTableState } from '../../hooks/useTableState'
 import { PendingActionModal } from '../questions/QuestionsPage'
 import { ROLES, ROLE_LABELS, type Role, type User } from '../../types'
+import { usersApi } from '../../services'
 import { formatDateTime, formatRelative, initials } from '../../utils'
 
 interface UsersPageProps {
@@ -46,8 +49,8 @@ const ROLE_TONE: Record<Role, 'danger' | 'brand' | 'info' | 'neutral' | 'violet'
 
 /** Plain-language summary of what each role can reach. */
 const ROLE_SUMMARY: Record<Role, string> = {
-  SUPER_ADMIN: 'Unrestricted access, including user and licence management.',
-  ADMIN: 'Full operational access except licence management.',
+  SUPER_ADMIN: 'Installation owner: unrestricted access including user, licence and system management. Reserved for the app owner or the school\u2019s designated system administrator.',
+  ADMIN: 'Full operational access except licence and system management.',
   EXAM_OFFICER: 'Runs examinations and publishes results. No question authoring.',
   LECTURER: 'Authors and edits questions in their subjects. Read-only on results.',
   INVIGILATOR: 'Live session monitoring and candidate lookup only.',
@@ -71,6 +74,34 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
   const [search, setSearch] = useState('')
   const debounced = useDebouncedValue(search, 300)
   const [notice, setNotice] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const [roleUser, setRoleUser] = useState<User | null>(null)
+  const [roleDraft, setRoleDraft] = useState<Exclude<Role, 'STUDENT'>>('LECTURER')
+  const [addOpen, setAddOpen] = useState(false)
+  const [addForm, setAddForm] = useState({ email: '', password: '', firstName: '', lastName: '', roleCode: 'LECTURER' as Exclude<Role, 'STUDENT'>, status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' })
+  const [addError, setAddError] = useState<string | null>(null)
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { email: string; password: string; firstName: string; lastName: string; roleCode: Exclude<Role, 'STUDENT'>; status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' }) =>
+      usersApi.create(payload as any),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      setAddOpen(false)
+      setAddForm({ email: '', password: '', firstName: '', lastName: '', roleCode: 'LECTURER', status: 'ACTIVE' })
+      setAddError(null)
+    },
+    onError: (err) => setAddError(err instanceof Error ? err.message : 'Failed to create user'),
+  })
+
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: Exclude<Role, 'STUDENT'> }) =>
+      usersApi.update(id, { roleCode: role }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      setRoleUser(null)
+    },
+    onError: (err) => setNotice(err instanceof Error ? err.message : 'Failed to change role'),
+  })
 
   const visible = useMemo(() => {
     const term = debounced.trim().toLowerCase()
@@ -94,7 +125,7 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
         <div className="flex items-center gap-2.5">
           <span
             aria-hidden
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-2xs font-semibold text-brand-700"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--cb-primary-bg)] text-2xs font-semibold text-[var(--cb-primary-deep)]"
           >
             {initials(u.fullName)}
           </span>
@@ -158,6 +189,15 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
             Edit
           </DropdownItem>
           <DropdownItem
+            icon={<Shield className="h-3.5 w-3.5" />}
+            onClick={() => {
+              setRoleUser(u)
+              setRoleDraft(u.role === 'STUDENT' ? 'LECTURER' : (u.role as Exclude<Role, 'STUDENT'>))
+            }}
+          >
+            Change role
+          </DropdownItem>
+          <DropdownItem
             icon={<KeyRound className="h-3.5 w-3.5" />}
             onClick={() => setNotice('Reset password')}
           >
@@ -188,8 +228,8 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
         actions={
           <button
             type="button"
-            onClick={() => setNotice('Add user')}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand-600 px-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+                  onClick={() => setAddOpen(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 text-sm font-medium shadow-sm transition-colors hover:bg-[var(--cb-primary-dark)]"
           >
             <Plus className="h-4 w-4" />
             Add user
@@ -242,8 +282,8 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
               emptyAction={
                 <button
                   type="button"
-                  onClick={() => setNotice('Add user')}
-                  className="text-xs font-medium text-brand-700 hover:underline"
+            onClick={() => setAddOpen(true)}
+                  className="text-xs font-medium text-[var(--cb-primary-deep)] hover:underline"
                 >
                   Add the first user
                 </button>
@@ -292,6 +332,82 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
           </dl>
         </PanelBody>
       </Panel>
+
+      <Modal
+        open={roleUser !== null}
+        onClose={() => setRoleUser(null)}
+        title="Change role"
+        description={roleUser ? `Assign a new role to ${roleUser.fullName}.` : undefined}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRoleUser(null)}
+              className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={changeRoleMutation.isPending}
+              onClick={() => roleUser && changeRoleMutation.mutate({ id: roleUser.id, role: roleDraft })}
+              className="inline-flex h-9 items-center rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 text-sm font-medium shadow-sm hover:bg-[var(--cb-primary-dark)] disabled:opacity-50"
+            >
+              {changeRoleMutation.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        }
+      >
+        <label className="block text-sm font-medium text-slate-700">
+          Role
+          <select
+            value={roleDraft}
+            onChange={(e) => setRoleDraft(e.target.value as Exclude<Role, 'STUDENT'>)}
+            className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+          >
+            {ROLES.filter((r) => r !== 'STUDENT').map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </Modal>
+
+      <Modal
+        open={addOpen}
+        onClose={() => { setAddOpen(false); setAddError(null) }}
+        title="Add user"
+        description="Create a staff account. Super administrator is limited to one per installation."
+        footer={
+          <>
+            <button type="button" onClick={() => { setAddOpen(false); setAddError(null) }} className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={createMutation.isPending}
+              onClick={() => createMutation.mutate(addForm)}
+              className="inline-flex h-9 items-center rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 text-sm font-medium shadow-sm hover:bg-[var(--cb-primary-dark)] disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Creating…' : 'Create'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {addError && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{addError}</p>}
+          <input className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm" placeholder="First name" value={addForm.firstName} onChange={(e) => setAddForm({ ...addForm, firstName: e.target.value })} />
+          <input className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm" placeholder="Last name" value={addForm.lastName} onChange={(e) => setAddForm({ ...addForm, lastName: e.target.value })} />
+          <input className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm" placeholder="Email" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} />
+          <input className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm" type="password" placeholder="Password" value={addForm.password} onChange={(e) => setAddForm({ ...addForm, password: e.target.value })} />
+          <select className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm" value={addForm.roleCode} onChange={(e) => setAddForm({ ...addForm, roleCode: e.target.value as Exclude<Role, 'STUDENT'> })}>
+            {ROLES.filter((r) => r !== 'STUDENT' && r !== 'SUPER_ADMIN').map((r) => (
+              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+            ))}
+          </select>
+        </div>
+      </Modal>
 
       <PendingActionModal
         action={notice}

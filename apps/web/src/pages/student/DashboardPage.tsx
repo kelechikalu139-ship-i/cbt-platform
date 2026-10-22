@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Card, Badge, Button, EmptyState } from '../../components/common'
+import { Card, Badge, Button, EmptyState, Skeleton } from '../../components/common'
 import { studentAPI } from '../../services/api'
 import { useAuth } from '../../store'
 import type { Exam } from '../../types'
@@ -39,10 +39,40 @@ export const DashboardPage: React.FC = () => {
     load()
   }, [])
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-gray-500">Welcome back, {user?.name}! Here's your overview</p>
+        </div>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {[0, 1, 2].map((card) => (
+            <Card key={card}>
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-16" />
+                </div>
+                <Skeleton className="h-12 w-12 rounded-lg" />
+              </div>
+            </Card>
+          ))}
+        </div>
+        <Card title="Available Exams">
+          <div className="space-y-3">
+            {[0, 1, 2].map((row) => (
+              <Skeleton key={row} className="h-16 w-full rounded-lg" />
+            ))}
+          </div>
+        </Card>
+        <Card title="Recent Results">
+          <div className="space-y-3">
+            {[0, 1].map((row) => (
+              <Skeleton key={row} className="h-14 w-full rounded-lg" />
+            ))}
+          </div>
+        </Card>
       </div>
     )
   }
@@ -109,7 +139,13 @@ export const DashboardPage: React.FC = () => {
         title="Available Exams"
         action={<Badge variant="info">{data?.availableExams.length ?? 0} exams</Badge>}
       >
-        {!data?.availableExams.length ? (
+        {loading && !data ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((row) => (
+              <Skeleton key={row} className="h-16 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : !data?.availableExams.length ? (
           <EmptyState
             title="No exams available"
             description="Your administrator has not assigned any exams to you yet"
@@ -139,7 +175,13 @@ export const DashboardPage: React.FC = () => {
       </Card>
 
       <Card title="Recent Results">
-        {!data?.recentSessions.length ? (
+        {loading && !data ? (
+          <div className="space-y-3">
+            {[0, 1].map((row) => (
+              <Skeleton key={row} className="h-14 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : !data?.recentSessions.length ? (
           <EmptyState
             title="No completed exams yet"
             description="Your scores will appear here after you complete an exam"

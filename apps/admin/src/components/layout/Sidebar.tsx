@@ -11,6 +11,8 @@ export interface SidebarProps {
   /** Desktop-only collapse affordance. */
   collapsed: boolean
   onToggleCollapse: () => void
+  /** Institution logo (public URL), from system settings. */
+  logoUrl: string | null
 }
 
 /**
@@ -19,7 +21,13 @@ export interface SidebarProps {
  * Dark chrome is deliberate: it frames the working area and keeps attention on
  * the data. Collapsible because examination staff often want the table wide.
  */
-export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({
+  open,
+  onClose,
+  collapsed,
+  onToggleCollapse,
+  logoUrl = null,
+}: SidebarProps) {
   const { user, can } = useAuth()
 
   return (
@@ -37,7 +45,7 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
       <aside
         aria-label="Main navigation"
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col bg-ink-900 transition-all duration-200',
+          'fixed inset-y-0 left-0 z-40 flex flex-col bg-[var(--cb-primary)] transition-all duration-200',
           'lg:translate-x-0',
           collapsed ? 'lg:w-16' : 'lg:w-60',
           open ? 'w-60 translate-x-0' : 'w-60 -translate-x-full',
@@ -50,21 +58,35 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
             collapsed && 'lg:justify-center lg:px-0',
           )}
         >
-          <span
-            aria-hidden
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-brand-600 text-sm font-bold text-white"
-          >
-            C
-          </span>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt=""
+              className={cn(
+                collapsed ? 'h-7 w-7' : 'h-8 w-auto',
+                'rounded border border-white/20 bg-white/10 shrink-0',
+              )}
+            />
+          ) : (
+            <span
+              aria-hidden
+              className={cn(
+                'flex items-center justify-center rounded bg-[var(--cb-primary)] text-sm font-bold text-[var(--cb-primary-text)]',
+                collapsed ? 'h-7 w-7' : 'h-7 w-7',
+              )}
+            >
+              C
+            </span>
+          )}
           <div className={cn('min-w-0 flex-1', collapsed && 'lg:hidden')}>
-            <p className="truncate text-sm font-semibold text-white">CBT System</p>
-            <p className="truncate text-2xs text-slate-400">Administration</p>
+            <p className="truncate text-sm font-semibold text-[var(--cb-primary-text)]">CBT System</p>
+            <p className="truncate text-2xs text-[var(--cb-primary-text-a80)]">Administration</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close navigation"
-            className="rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white lg:hidden"
+            className="rounded p-1 text-[var(--cb-primary-text)] hover:bg-[var(--cb-primary-text-a10)] hover:text-[var(--cb-primary-text)] lg:hidden"
           >
             <X className="h-4 w-4" />
           </button>
@@ -94,16 +116,16 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
                         end={item.path === '/'}
                         onClick={onClose}
                         title={collapsed ? item.label : undefined}
-                        className={({ isActive }) =>
-                          cn(
-                            'group relative flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-colors',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
-                            collapsed && 'lg:justify-center lg:px-0',
-                            isActive
-                              ? 'bg-brand-600 text-white'
-                              : 'text-slate-300 hover:bg-white/10 hover:text-white',
-                          )
-                        }
+                         className={({ isActive }) =>
+                           cn(
+                             'group relative flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium transition-colors',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)]',
+                              collapsed && 'lg:justify-center lg:px-0',
+                             isActive
+                               ? 'bg-[var(--cb-primary-dark)] text-[var(--cb-primary-text)]'
+                               : 'text-[var(--cb-primary-text-a60)] hover:bg-[var(--cb-primary-text-a10)] hover:text-[var(--cb-primary-text)]',
+                           )
+                         }
                       >
                         {({ isActive }) => (
                           <>
@@ -111,7 +133,7 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
                               aria-hidden
                               className={cn(
                                 'h-4 w-4 shrink-0',
-                                isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200',
+                                isActive ? 'text-[var(--cb-primary-text)]' : 'text-[var(--cb-primary-text-a60)] group-hover:text-[var(--cb-primary-text)]',
                               )}
                             />
                             <span className={cn('truncate', collapsed && 'lg:hidden')}>
@@ -120,9 +142,9 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
                             {item.badge !== undefined && (
                               <span
                                 className={cn(
-                                  'tabular ml-auto rounded px-1.5 py-0.5 text-2xs',
-                                  isActive ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300',
-                                  collapsed && 'lg:hidden',
+                                   'tabular ml-auto rounded px-1.5 py-0.5 text-2xs',
+                                   isActive ? 'bg-[var(--cb-primary-text-a20)] text-[var(--cb-primary-text)]' : 'bg-[var(--cb-primary-text-a10)] text-[var(--cb-primary-text-a80)]',
+                                   collapsed && 'lg:hidden',
                                 )}
                               >
                                 {item.badge}
@@ -149,7 +171,7 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
           >
             <span
               aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600/20 text-xs font-semibold text-brand-200"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--cb-primary-bg)] text-xs font-semibold text-[var(--cb-primary-deep)]"
             >
               {initials(user?.fullName)}
             </span>

@@ -17,7 +17,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    'bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:bg-brand-800 disabled:bg-brand-300',
+    'bg-[var(--cb-primary)] text-[var(--cb-primary-text)] shadow-sm hover:bg-[var(--cb-primary-dark)] active:bg-[var(--cb-primary-dark)] disabled:bg-slate-300 disabled:text-slate-500',
   secondary:
     'bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300 disabled:text-slate-400',
   outline:
@@ -55,7 +55,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center rounded-md font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)] focus-visible:ring-offset-1',
         'disabled:cursor-not-allowed',
         VARIANTS[variant],
         SIZES[size],
@@ -95,7 +95,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       aria-label={label}
       className={cn(
         'inline-flex items-center justify-center rounded-md transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         size === 'sm' ? 'h-7 w-7' : 'h-8 w-8',
         VARIANTS[variant],

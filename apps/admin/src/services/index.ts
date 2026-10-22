@@ -1,5 +1,6 @@
 import * as mocks from '../mocks'
 import type { LoginResponse } from './admin.api'
+import type { ExamAttemptSummary, LiveExamSession, BackupInfo } from '../types'
 import {
   realAuditApi,
   realAuthApi,
@@ -7,6 +8,7 @@ import {
   realDashboardApi,
   realExamsApi,
   realQuestionsApi,
+  realResultsApi,
   realStudentsApi,
   realSubjectsApi,
   realSystemApi,
@@ -71,6 +73,23 @@ export const authApi = pick(
         tokenType: 'Bearer',
       }
     },
+    register: async (payload: {
+      email: string
+      password: string
+      firstName: string
+      lastName: string
+    }): Promise<LoginResponse> => {
+      if (!payload.email.trim() || !payload.password) {
+        throw new Error('Enter an email address and password.')
+      }
+      return {
+        user: await mocks.mockUsersApi.me(),
+        accessToken: 'mock-access-token',
+        refreshToken: 'mock-refresh-token',
+        expiresIn: 900,
+        tokenType: 'Bearer',
+      }
+    },
     logout: async (): Promise<void> => undefined,
     changePassword: async (): Promise<void> => undefined,
   },
@@ -90,16 +109,32 @@ export const systemApi = pick(
     status: () => mocks.mockSystemApi.status(),
     settings: () => mocks.mockSystemApi.settings(),
     saveSettings: mocks.mockSystemApi.saveSettings,
+    uploadLogo: (file: File) =>
+      Promise.resolve({ logoUrl: URL.createObjectURL(file) }),
     accessUrls: () => mocks.mockSystemApi.accessUrls(),
     restartService: async (): Promise<void> => undefined,
+    backups: async (): Promise<BackupInfo[]> => [],
+    backup: async (): Promise<BackupInfo> => ({
+      name: `mock-${Date.now()}`,
+      path: '',
+      createdAt: new Date().toISOString(),
+      appVersion: 'mock',
+      sizeBytes: 0,
+      rowCounts: {},
+    }),
+    restoreBackup: async (): Promise<void> => undefined,
   },
   {
     health: realSystemApi.health,
     status: realSystemApi.status,
-    settings: (): Promise<never> => notYet('Reading system settings'),
-    saveSettings: (): Promise<never> => notYet('Saving system settings'),
+    settings: realSystemApi.settings,
+    saveSettings: realSystemApi.saveSettings,
+    uploadLogo: realSystemApi.uploadLogo,
     accessUrls: (): Promise<never> => notYet('Access URLs'),
-    restartService: (): Promise<never> => notYet('Restarting the service'),
+    restartService: realSystemApi.restartService,
+    backups: realSystemApi.backups,
+    backup: realSystemApi.backup,
+    restoreBackup: realSystemApi.restoreBackup,
   },
 )
 
@@ -110,6 +145,7 @@ export const studentsApi = pick(
     classes: mocks.mockStudentsApi.classes,
     options: mocks.mockStudentsApi.options,
     endSession: mocks.mockStudentsApi.endSession,
+    removeByFilter: mocks.mockStudentsApi.removeByFilter,
     create: (): Promise<never> => notYet('Creating a student'),
     update: (): Promise<never> => notYet('Editing a student'),
     setStatus: (): Promise<never> => notYet('Changing student status'),
@@ -129,6 +165,7 @@ export const studentMutations = {
   update: realStudentsApi.update,
   setStatus: realStudentsApi.setStatus,
   remove: realStudentsApi.remove,
+  removeByFilter: realStudentsApi.removeByFilter,
   endSession: realStudentsApi.endSession,
 }
 
@@ -212,6 +249,20 @@ export const examMutations = {
   remove: realExamsApi.remove,
   publish: realExamsApi.publish,
   unpublish: realExamsApi.unpublish,
+  archive: realExamsApi.archive,
+}
+
+/**
+ * Invigilator actions on live attempts.
+ *
+ * Always the real backend, exactly like the exam mutations above: the
+ * mock layer has no exam engine, so "ending an attempt" there would
+ * appear to succeed while changing nothing.
+ */
+export const examSessionMutations = {
+  forceSubmit: realExamsApi.forceSubmitSession,
+  resetAttempts: realExamsApi.resetAttempts,
+  extendSession: realExamsApi.extendSession,
 }
 
 export const examsApi = pick(
@@ -223,6 +274,14 @@ export const examsApi = pick(
     publish: (): Promise<never> => notYet('Publishing an examination'),
     unpublish: (): Promise<never> => notYet('Unpublishing an examination'),
     remove: (): Promise<never> => notYet('Deleting an examination'),
+    // The mock register has no exam engine: representative attempts stand
+    // in for live ones, and the invigilator actions stay unavailable.
+    liveSessions: async (): Promise<LiveExamSession[]> => mocks.fx.liveSessions(),
+    forceSubmitSession: (): Promise<never> => notYet('Ending an attempt'),
+    resetAttempts: (): Promise<never> => notYet('Resetting attempts'),
+    extendSession: (): Promise<never> => notYet('Extending an attempt'),
+    examAttempts: async (): Promise<ExamAttemptSummary[]> => [],
+    archive: (): Promise<never> => notYet('Archiving an examination'),
   },
   realExamsApi,
 )
@@ -234,18 +293,22 @@ export const examsApi = pick(
  * The screen still exists to show the intended shape, but it is honest that the
  * data is illustrative rather than real.
  */
-export const resultsApi = {
-  list: mocks.mockResultsApi.list,
-  get: mocks.mockResultsApi.get,
-  summary: () => mocks.mockResultsApi.summary(),
-  studentPerformance: mocks.mockResultsApi.studentPerformance,
-}
+export const resultsApi = pick(
+  {
+    list: mocks.mockResultsApi.list,
+    get: mocks.mockResultsApi.get,
+    exportCsv: mocks.mockResultsApi.exportCsv,
+    summary: () => mocks.mockResultsApi.summary(),
+    studentPerformance: mocks.mockResultsApi.studentPerformance,
+  },
+  realResultsApi,
+)
 
 export const usersApi = pick(
   {
     list: mocks.mockUsersApi.list,
-    create: (): Promise<never> => notYet('Creating a user'),
-    update: (): Promise<never> => notYet('Editing a user'),
+    create: mocks.mockUsersApi.create,
+    update: mocks.mockUsersApi.update,
     setStatus: (): Promise<never> => notYet('Changing user status'),
     remove: (): Promise<never> => notYet('Deleting a user'),
   },

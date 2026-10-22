@@ -22,7 +22,7 @@ export function LoadingState({ label = 'Loading…', className, rows = 5 }: Load
       role="status"
       aria-live="polite"
     >
-      <Loader2 aria-hidden className="h-5 w-5 animate-spin text-brand-600" />
+      <Loader2 aria-hidden className="h-5 w-5 animate-spin text-[var(--cb-primary-deep)]" />
       <p className="text-sm text-slate-500">{label}</p>
       <span className="sr-only">{label}</span>
       {/* Skeletons are decorative; the live region above carries the message. */}
@@ -138,14 +138,14 @@ export function ErrorState({
 export type AlertTone = 'info' | 'warning' | 'danger' | 'success'
 
 const ALERT_TONES: Record<AlertTone, string> = {
-  info: 'border-brand-200 bg-brand-50 text-brand-900',
+  info: 'border-[var(--cb-primary-a20)] bg-[var(--cb-primary-bg)] text-[var(--cb-primary-deep)]',
   warning: 'border-amber-200 bg-amber-50 text-amber-900',
   danger: 'border-red-200 bg-red-50 text-red-900',
   success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
 }
 
 const ALERT_ICON: Record<AlertTone, ReactNode> = {
-  info: <span aria-hidden className="block h-2 w-2 rounded-full bg-brand-500" />,
+  info: <span aria-hidden className="block h-2 w-2 rounded-full bg-[var(--cb-primary-deep)]" />,
   warning: <AlertTriangle className="h-4 w-4 text-amber-600" />,
   danger: <AlertTriangle className="h-4 w-4 text-red-600" />,
   success: <span aria-hidden className="block h-2 w-2 rounded-full bg-emerald-500" />,

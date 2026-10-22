@@ -1,14 +1,16 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from '../layouts/AdminLayout'
 import { LoginPage } from '../pages/LoginPage'
+import { RegisterPage } from '../pages/RegisterPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { StudentsPage } from '../pages/students/StudentsPage'
 import { QuestionsPage } from '../pages/questions/QuestionsPage'
 import { CategoriesPage } from '../pages/categories/CategoriesPage'
 import { ExamsPage } from '../pages/exams/ExamsPage'
+import { LiveMonitorPage } from '../pages/live/LiveMonitorPage'
 import { ResultsPage } from '../pages/results/ResultsPage'
 import { UsersPage } from '../pages/users/UsersPage'
 import { AuditLogsPage } from '../pages/audit-logs/AuditLogsPage'
@@ -17,6 +19,7 @@ import { SettingsPage } from '../pages/settings/SettingsPage'
 import { useApiErrorMessage } from '../hooks/useApiErrorMessage'
 import { useAuth } from '../store/auth'
 import { USE_MOCK } from '../services'
+import { applyBrandColor } from '../utils/theme'
 import {
   auditApi,
   categoriesApi,
@@ -28,8 +31,8 @@ import {
   systemApi,
   usersApi,
 } from '../services'
-import type { Permission, SystemStatus } from '../types'
-import type { ReactNode } from 'react'
+import type { Permission, SystemSettings, SystemStatus } from '../types'
+import { useEffect, type ReactNode } from 'react'
 
 /* -------------------------------------------------------------------------- */
 /* Permission gate                                                             */
@@ -86,9 +89,16 @@ function FullPageLoader() {
 /* -------------------------------------------------------------------------- */
 
 function DashboardRoute() {
+  // Polled so the live counters on the landing page stay honest while
+  // the page is left open: a minute is frequent enough to be current and
+  // gentle enough that the monitor, not the dashboard, is what a busy
+  // exam server feels. Background tabs do not poll at all.
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => dashboardApi.summary(),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   })
   const message = useApiErrorMessage(error)
 
@@ -118,6 +128,12 @@ function StudentsRoute() {
     queryKey: ['student-options'],
     queryFn: () => studentsApi.options(),
   })
+  // Exams are offered as a bulk-delete target: an administrator can
+  // deactivate every candidate who has sat a given paper.
+  const exams = useQuery({
+    queryKey: ['student-bulk-exams'],
+    queryFn: () => examsApi.list({ page: 1, pageSize: 200 }),
+  })
   const message = useApiErrorMessage(query.error)
 
   return (
@@ -126,6 +142,7 @@ function StudentsRoute() {
       meta={query.data?.meta ?? EMPTY_META}
       classNames={classes.data ?? []}
       schoolOptions={schoolOptions.data}
+      exams={exams.data?.data ?? []}
       loading={query.isPending}
       error={message}
       onRetry={() => void query.refetch()}
@@ -185,6 +202,17 @@ function CategoriesRoute() {
   )
 }
 
+/**
+ * Live monitoring.
+ *
+ * Polls on an interval rather than per interaction: the page is watched
+ * for stretches at a time on exam day, and a background poll is cheaper
+ * than a hand-refresh habit that gets forgotten mid-hall.
+ */
+function LiveMonitorRoute() {
+  return <LiveMonitorPage />
+}
+
 function ExamsRoute() {
   const query = useQuery({
     queryKey: ['exams'],
@@ -228,7 +256,7 @@ function ExamsRoute() {
 function ResultsRoute() {
   const query = useQuery({
     queryKey: ['results'],
-    queryFn: () => resultsApi.list({ page: 1, pageSize: 20 }),
+    queryFn: () => resultsApi.list({ page: 1, limit: 20 }),
   })
   const summary = useQuery({
     queryKey: ['results-summary'],
@@ -330,9 +358,20 @@ function SystemHealthRoute() {
 }
 
 function SettingsRoute() {
+  const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: ['system-settings'],
+    queryKey: ['settings'],
     queryFn: () => systemApi.settings(),
+  })
+  // Apply the institution's primary colour as CSS variables so the whole shell
+  // themes itself from the persisted setting.
+  useEffect(() => {
+    applyBrandColor((query.data as SystemSettings | undefined)?.primaryColor ?? null)
+  }, [query.data])
+
+  const saveMutation = useMutation({
+    mutationFn: (patch: Partial<SystemSettings>) => systemApi.saveSettings(patch),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['settings'] }),
   })
   const message = useApiErrorMessage(query.error)
 
@@ -340,13 +379,10 @@ function SettingsRoute() {
     <SettingsPage
       settings={query.data ?? EMPTY_SETTINGS}
       loading={query.isPending}
-      saving={false}
+      saving={saveMutation.isPending}
       error={message}
       onRetry={() => void query.refetch()}
-      onSave={(patch) => {
-        // Persisting settings needs the API; it lands with Phase 12.
-        void patch
-      }}
+      onSave={(patch) => void saveMutation.mutate(patch)}
     />
   )
 }
@@ -363,6 +399,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="login" element={<LoginPage />} />
+      <Route path="register" element={<RegisterPage />} />
 
       <Route
         element={
@@ -394,6 +431,14 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="questions.read">
               <CategoriesRoute />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="live"
+          element={
+            <RequirePermission permission="exams.read">
+              <LiveMonitorRoute />
             </RequirePermission>
           }
         />
@@ -479,6 +524,8 @@ const EMPTY_SUMMARY = {
     completedExams: 0,
     totalResults: 0,
     totalUsers: 0,
+    liveSessions: 0,
+    signedInStudents: 0,
   },
   recentActivity: [],
   // `[]`, not `null`: `null` is reserved for "caller lacks exams.read", which is a

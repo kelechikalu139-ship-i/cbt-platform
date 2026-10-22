@@ -8,11 +8,12 @@ import {
   currentUserProfile,
   login,
   logout,
+  register,
   refresh,
   studentLogin,
   type RequestContext,
 } from './auth.service.js'
-import type { ChangePasswordInput, LoginInput, RefreshInput, StudentLoginInput } from './auth.schema.js'
+import type { ChangePasswordInput, LoginInput, RefreshInput, RegisterInput, StudentLoginInput } from './auth.schema.js'
 
 /**
  * Authentication controller (§25).
@@ -37,6 +38,11 @@ export const loginController = asyncHandler(async (req: Request, res: Response) 
 export const studentLoginController = asyncHandler(async (req: Request, res: Response) => {
   const result = await studentLogin(req.body as StudentLoginInput, contextOf(req))
   sendData(res, result, 200, 'Signed in successfully')
+})
+
+export const registerController = asyncHandler(async (req: Request, res: Response) => {
+  const result = await register(req.body as RegisterInput, contextOf(req))
+  sendData(res, result, 201, 'Super administrator registered')
 })
 
 export const refreshController = asyncHandler(async (req: Request, res: Response) => {

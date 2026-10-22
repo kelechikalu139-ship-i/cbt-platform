@@ -1,9 +1,8 @@
 import {
   CalendarClock,
-  CheckCircle2,
-  ClipboardList,
   FileQuestion,
   Gauge,
+  Loader2,
   TrendingUp,
   Users,
 } from 'lucide-react'
@@ -12,6 +11,7 @@ import type { ReactNode } from 'react'
 import type {
   DashboardCounters,
   DashboardUpcomingExam,
+  LiveExamSession,
   SubjectPerformance,
 } from '../types'
 import {
@@ -59,6 +59,35 @@ function ExamRow({
   )
 }
 
+/** mm:ss from a seconds count, for the time-left column. */
+function countdown(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function LiveSessionRow({ session }: { session: LiveExamSession }) {
+  const overdue = session.secondsRemaining === 0
+  return (
+    <li className="flex items-center justify-between gap-3 border-b border-slate-100 py-2.5 last:border-0">
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-slate-800">{session.studentName}</p>
+        <p className="mt-0.5 truncate text-2xs text-slate-500">
+          {session.admissionNumber} · {session.examTitle}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="tabular text-2xs text-slate-500">
+          {session.answeredCount}/{session.totalQuestions} answered
+        </span>
+        <Badge tone={overdue ? 'warning' : 'success'}>
+          {overdue ? 'Overdue' : countdown(session.secondsRemaining)}
+        </Badge>
+      </div>
+    </li>
+  )
+}
+
 /* -------------------------------------------------------------------------- */
 /* Dashboard                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -69,8 +98,8 @@ export interface DashboardPageProps {
     recentActivity: Array<{ date: string; started: number; submitted: number }>
     /** `null` when the caller lacks `exams.read`. */
     upcomingExams: DashboardUpcomingExam[] | null
-    /** Always empty until the exam engine lands. */
-    activeSessions: readonly unknown[]
+    /** Empty when nobody is writing, or the caller lacks `exams.read`. */
+    activeSessions: readonly LiveExamSession[]
     /** Always empty until grading lands. */
     subjectPerformance: SubjectPerformance[]
   }
@@ -118,6 +147,7 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
 
   const activity = summary.recentActivity ?? []
   const topSubjects = (summary.subjectPerformance ?? []).slice(0, 6)
+  const live = summary.activeSessions ?? []
 
   return (
     <div className="space-y-5">
@@ -146,20 +176,27 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
           label="Exams"
           value={c?.totalExams ?? 0}
           hint={`${c?.publishedExams ?? 0} published · ${c?.draftExams ?? 0} draft`}
-          icon={ClipboardList}
+          icon={CalendarClock}
           tone="sky"
         />
         <StatCard
           label="Staff accounts"
           value={c?.totalUsers ?? 0}
           hint="With administrative access"
-          icon={CheckCircle2}
+          icon={TrendingUp}
           tone="emerald"
         />
       </div>
 
       {/* Examination counters */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Writing now"
+          value={c?.liveSessions ?? 0}
+          hint={`${c?.signedInStudents ?? 0} candidates signed in`}
+          icon={Loader2}
+          tone="amber"
+        />
         <StatCard
           label="Categories"
           value={c?.totalCategories ?? 0}
@@ -171,15 +208,8 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
           label="Subjects"
           value={c?.totalSubjects ?? 0}
           hint="Across all categories"
-          icon={ClipboardList}
-          tone="violet"
-        />
-        <StatCard
-          label="Completed exams"
-          value={c?.completedExams ?? 0}
-          hint="Papers no longer live"
           icon={CalendarClock}
-          tone="sky"
+          tone="violet"
         />
         <StatCard
           label="Results"
@@ -227,7 +257,7 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
             actions={
               <Link
                 to="/results"
-                className="text-xs font-medium text-brand-700 hover:underline"
+                className="text-xs font-medium text-[var(--cb-primary-deep)] hover:underline"
               >
                 Details
               </Link>
@@ -259,7 +289,7 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
           <PanelHeader
             title="Upcoming examinations"
             actions={
-              <Link to="/exams" className="text-xs font-medium text-brand-700 hover:underline">
+              <Link to="/exams" className="text-xs font-medium text-[var(--cb-primary-deep)] hover:underline">
                 View all
               </Link>
             }
@@ -293,12 +323,28 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
 
         {/* Live sessions */}
         <Panel>
-          <PanelHeader title="Live exam sessions" description="Students currently writing" />
-          <PanelBody>
-            <EmptyState
-              title="Not available yet"
-              description="Live session monitoring arrives with the exam engine. The server returns an empty list until then, so no candidates can be hidden from you by a stale figure."
-            />
+          <PanelHeader
+            title="Live exam sessions"
+            description="Students currently writing"
+            actions={
+              <Link to="/live" className="text-xs font-medium text-[var(--cb-primary-deep)] hover:underline">
+                Open monitor
+              </Link>
+            }
+          />
+          <PanelBody flush>
+            {live.length === 0 ? (
+              <EmptyState
+                title="Nobody is writing"
+                description="Candidates who start an examination appear here while it is in progress."
+              />
+            ) : (
+              <ul className="px-5 py-1">
+                {live.slice(0, 6).map((session) => (
+                  <LiveSessionRow key={session.sessionId} session={session} />
+                ))}
+              </ul>
+            )}
           </PanelBody>
         </Panel>
       </div>
@@ -309,7 +355,7 @@ export function DashboardPage({ summary, loading = false, error = null, onRetry 
           title="Performance by subject"
           description="Average score across completed examinations"
           actions={
-            <Link to="/results" className="text-xs font-medium text-brand-700 hover:underline">
+            <Link to="/results" className="text-xs font-medium text-[var(--cb-primary-deep)] hover:underline">
               Open reports
             </Link>
           }

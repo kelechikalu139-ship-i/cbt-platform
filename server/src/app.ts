@@ -34,6 +34,8 @@ export function createApp(): Application {
         directives: {
           defaultSrc: ["'none'"],
           frameAncestors: ["'none'"],
+          // Uploaded logos are served same-origin and rendered by both apps.
+          imgSrc: ["'self'"],
         },
       },
       // The API is not the origin of the HTML app, so cross-origin resource
@@ -126,6 +128,10 @@ export function createApp(): Application {
       },
     })
   })
+
+  // Uploaded files (logos) are served without authentication so the student
+  // application can render the school logo without a session.
+  app.use('/api/v1/uploads', express.static(env.UPLOAD_DIR))
 
   app.use('/api/v1', apiRouter)
 

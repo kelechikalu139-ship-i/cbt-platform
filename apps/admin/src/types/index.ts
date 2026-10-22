@@ -688,6 +688,16 @@ export interface SubjectPerformance {
   passRate: number
 }
 
+export interface ResultSummary {
+  totalResults: number
+  passed: number
+  failed: number
+  averageScore: number
+  passRate: number
+  gradeDistribution: Array<{ grade: string; count: number }>
+  subjectPerformance: SubjectPerformance[]
+}
+
 /* -------------------------------------------------------------------------- */
 /* Audit logs (append-only)                                                    */
 /* -------------------------------------------------------------------------- */
@@ -769,6 +779,8 @@ export interface SystemStatus {
   }
   database: 'connected' | 'unavailable'
   counts: { students: number; questions: number; exams: number; results: number } | null
+  /** Machine identifier shown to administrators for support and licensing. */
+  installationId: string | null
   timestamp: string
 }
 
@@ -780,8 +792,9 @@ export interface SystemStatus {
  * mode, which is why nothing here may be presented as saved configuration.
  */
 export interface SystemSettings {
-  schoolName: string
-  schoolShortName: string
+    schoolName: string
+    schoolShortName: string
+    primaryColor?: string | null
   /** Logo served by the backend at /api/system/logo. */
   logoUrl: string | null
   defaultTimezone: string
@@ -835,6 +848,50 @@ export interface DashboardCounters {
   /** Always counted today; session and grading analytics arrive in a later phase. */
   totalResults: number
   totalUsers: number
+  /** Attempts in progress right now. */
+  liveSessions: number
+  /** Candidates holding a live portal sign-in. */
+  signedInStudents: number
+}
+/**
+ * One attempt in progress, as the live monitor and the dashboard see it.
+ */
+export interface LiveExamSession {
+  sessionId: string
+  examId: string
+  examTitle: string
+  studentId: string
+  studentRecordId: string
+  studentName: string
+  admissionNumber: string
+  className: string | null
+  program: string
+  session: string | null
+  attemptNumber: number
+  status: string
+  startedAt: string
+  expiresAt: string
+  /** Seconds left on the server clock; 0 once the attempt has run over. */
+  secondsRemaining: number
+  answeredCount: number
+  totalQuestions: number
+  violationCount: number
+  lastIpAddress: string | null
+  lastSavedAt: string | null
+}
+
+/**
+ * A candidate who has attempted a paper, for the reset-attempts dialog.
+ */
+export interface ExamAttemptSummary {
+  studentRecordId: string
+  admissionNumber: string
+  studentName: string
+  className: string | null
+  attempts: number
+  /** True while an attempt is still in progress. */
+  isLive: boolean
+  lastSubmittedAt: string | null
 }
 
 /**
@@ -863,12 +920,32 @@ export interface DashboardSummary {
   recentActivity: Array<{ date: string; started: number; submitted: number }>
   /** `null` when the caller lacks `exams.read`, so the UI can tell it from "none". */
   upcomingExams: DashboardUpcomingExam[] | null
-  /** Always `[]` until the exam engine lands; the field exists so the UI need not branch. */
-  activeSessions: never[]
-  /** Always `[]` until grading lands. */
-  subjectPerformance: never[]
+  /**
+   * Live attempts, newest first. `[]` means nobody is writing (or the
+   * caller lacks `exams.read` and the panel shows a permitted-empty state).
+   */
+  activeSessions: LiveExamSession[]
+  /** Empty until grading lands; typed for the payload the server will send. */
+  subjectPerformance: SubjectPerformance[]
   /** Always `null` until licensing lands. */
   license: null
   todayExams: number
   generatedAt: string
 }
+
+/**
+ * One logical backup, as returned by `GET /system/backups`.
+ *
+ * `name` is the backup folder's timestamp; `path` is server-side only and is
+ * not meaningful to the browser, but it is kept for parity with the server
+ * payload.
+ */
+export interface BackupInfo {
+  name: string
+  path: string
+  createdAt: string
+  appVersion: string
+  sizeBytes: number
+  rowCounts: Record<string, number>
+}
+

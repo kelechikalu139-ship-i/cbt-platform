@@ -113,7 +113,7 @@ export function DataTable<T>({
                       onClick={() => onSort(col.key)}
                       className={cn(
                         'group inline-flex items-center gap-1 rounded transition-colors hover:text-slate-700',
-                        isSorted && 'text-brand-700',
+                        isSorted && 'text-[var(--cb-primary-deep)]',
                         align === 'right' && 'flex-row-reverse',
                       )}
                     >
@@ -150,7 +150,7 @@ export function DataTable<T>({
                 className={cn(
                   'transition-colors',
                   onRowClick && 'cursor-pointer hover:bg-slate-50',
-                  active && 'bg-brand-50/60',
+                  active && 'bg-[var(--cb-primary-bg-a60)]',
                 )}
               >
                 {columns.map((col) => (
@@ -176,7 +176,7 @@ export function DataTable<T>({
       {/* Overlays are positioned over the table so the layout never jumps. */}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-          <Loader2 aria-hidden className="h-5 w-5 animate-spin text-brand-600" />
+          <Loader2 aria-hidden className="h-5 w-5 animate-spin text-[var(--cb-primary-deep)]" />
           <span className="sr-only">Loading</span>
         </div>
       )}
@@ -188,7 +188,7 @@ export function DataTable<T>({
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--cb-primary-deep)] hover:underline"
             >
               <RefreshCw aria-hidden className="h-3.5 w-3.5" />
               Try again
@@ -280,7 +280,7 @@ export function Pagination({
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="h-7 cursor-pointer rounded border border-slate-300 bg-white pl-2 pr-1 text-xs text-slate-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="h-7 cursor-pointer rounded border border-slate-300 bg-white pl-2 pr-1 text-xs text-slate-700 focus:border-[var(--cb-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--cb-primary)]"
             >
               {pageSizeOptions.map((size) => (
                 <option key={size} value={size}>
@@ -352,10 +352,10 @@ function PagerButton({
       onClick={onClick}
       className={cn(
         'tabular inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded px-1.5 text-xs font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)]',
         'disabled:cursor-not-allowed disabled:text-slate-300',
         active
-          ? 'bg-brand-600 text-white'
+          ? 'bg-[var(--cb-primary)] text-[var(--cb-primary-text)]'
           : 'text-slate-600 hover:bg-slate-100 disabled:hover:bg-transparent',
       )}
     >

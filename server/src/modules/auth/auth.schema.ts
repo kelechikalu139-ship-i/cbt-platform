@@ -52,6 +52,22 @@ export const logoutSchema = z.object({
   refreshToken: z.string().min(10).optional(),
 })
 
+/**
+ * One-time super administrator registration.
+ *
+ * Only the first super administrator can be created here. Once an active
+ * super administrator exists, this endpoint is permanently closed and new
+ * staff accounts are created through the authenticated /users endpoint.
+ */
+export const registerSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address').max(190).transform((v) => v.toLowerCase()),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(200),
+  firstName: z.string().trim().min(1, 'First name is required').max(80),
+  lastName: z.string().trim().min(1, 'Last name is required').max(80),
+})
+
+export type RegisterInput = z.infer<typeof registerSchema>
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),

@@ -43,8 +43,8 @@ export function isExamOpen(startAt: string, endAt: string, now: Date = new Date(
 export const STATUS_TONE: Record<string, string> = {
   ACTIVE: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
   PUBLISHED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  ONGOING: 'bg-brand-50 text-brand-700 ring-brand-600/20',
-  IN_PROGRESS: 'bg-brand-50 text-brand-700 ring-brand-600/20',
+  ONGOING: 'bg-[var(--cb-primary-bg)] text-[var(--cb-primary-deep)] ring-[var(--cb-primary-a20)]',
+  IN_PROGRESS: 'bg-[var(--cb-primary-bg)] text-[var(--cb-primary-deep)] ring-[var(--cb-primary-a20)]',
   COMPLETED: 'bg-slate-100 text-slate-600 ring-slate-500/20',
   SUBMITTED: 'bg-slate-100 text-slate-600 ring-slate-500/20',
   NOT_STARTED: 'bg-slate-100 text-slate-600 ring-slate-500/20',

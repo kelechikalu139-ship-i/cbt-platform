@@ -47,12 +47,22 @@ export const AUDIT_ACTIONS = {
   START_EXAM_SESSION: 'START_EXAM_SESSION',
   SUBMIT_EXAM: 'SUBMIT_EXAM',
   AUTO_SUBMIT_EXAM: 'AUTO_SUBMIT_EXAM',
+  /** An invigilator closed a candidate's attempt early. */
+  END_EXAM_SESSION: 'END_EXAM_SESSION',
+  /** Attempts on a paper were wiped so candidates can sit it again. */
+  RESET_EXAM_ATTEMPTS: 'RESET_EXAM_ATTEMPTS',
 
   CREATE_USER: 'CREATE_USER',
   UPDATE_USER: 'UPDATE_USER',
   DELETE_USER: 'DELETE_USER',
 
   CHANGE_SETTINGS: 'CHANGE_SETTINGS',
+  /** One-time creation of the first super administrator. */
+  REGISTER: 'REGISTER',
+  /** An invigilator added extra time to a live examination session. */
+  EXTEND_EXAM_TIME: 'EXTEND_EXAM_TIME',
+  /** An administrator archived an examination (soft-delete, keeps results). */
+  ARCHIVE_EXAM: 'ARCHIVE_EXAM',
 } as const
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS]

@@ -56,12 +56,12 @@ export function BarChart({
           >
             {d.secondary !== undefined && (
               <div
-                className="w-full max-w-[9px] rounded-t bg-brand-600"
+                className="w-full max-w-[9px] rounded-t bg-[var(--cb-primary)]"
                 style={{ height: `${(d.secondary / max) * 100}%` }}
               />
             )}
             <div
-              className="w-full max-w-[9px] rounded-t bg-brand-200 transition-colors group-hover:bg-brand-300"
+              className="w-full max-w-[9px] rounded-t bg-[var(--cb-primary-a30)] transition-colors group-hover:bg-[var(--cb-primary-a50)]"
               style={{ height: `${(d.value / max) * 100}%` }}
             />
           </div>
@@ -78,11 +78,11 @@ export function BarChart({
 
       <figcaption className="mt-3 flex items-center gap-4 text-2xs text-slate-500">
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-2 rounded-sm bg-brand-200" />
+          <span aria-hidden className="h-2 w-2 rounded-sm bg-[var(--cb-primary-a30)]" />
           {primaryLabel}
         </span>
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-2 rounded-sm bg-brand-600" />
+          <span aria-hidden className="h-2 w-2 rounded-sm bg-[var(--cb-primary)]" />
           {secondaryLabel}
         </span>
       </figcaption>
@@ -122,7 +122,7 @@ export function HorizontalBarList({
       {items.map((item) => {
         const pct = max > 0 ? Math.min(100, (item.value / max) * 100) : 0
         const tone =
-          item.value >= 70 ? 'bg-emerald-500' : item.value >= 50 ? 'bg-brand-500' : 'bg-amber-500'
+          item.value >= 70 ? 'bg-emerald-500' : item.value >= 50 ? 'bg-[var(--cb-primary)]' : 'bg-amber-500'
 
         return (
           <li key={item.label}>

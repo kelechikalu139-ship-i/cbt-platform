@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react'
@@ -55,6 +56,7 @@ interface StudentsPageProps {
   students: Student[]
   meta: { page: number; pageSize: number; totalItems: number; totalPages: number }
   classNames: string[]
+  exams: Array<{ id: string; title: string; showResultImmediately: boolean }>
   /**
    * The school's academic vocabulary, offered as suggestions by the add
    * and edit dialogs so programme, department, class and session names
@@ -124,6 +126,7 @@ export function StudentsPage({
   students,
   meta,
   classNames,
+  exams,
   schoolOptions,
   loading = false,
   error = null,
@@ -140,11 +143,14 @@ export function StudentsPage({
   const [selected, setSelected] = useState<Student | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<Student | null>(null)
   const [pendingStatus, setPendingStatus] = useState<{ student: Student; status: EntityStatus } | null>(null)
+  const [pendingSignOut, setPendingSignOut] = useState<Student | null>(null)
+  const [pendingBulkFilter, setPendingBulkFilter] = useState<{ className?: string; examId?: string } | null>(null)
 
   // Mutation dialogs
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Student | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
 
   // Server-sent error surfaced by the mutation dialogs
   const [mutationError, setMutationError] = useState<string | null>(null)
@@ -191,6 +197,22 @@ export function StudentsPage({
     },
   })
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (filter: { className?: string; examId?: string }) =>
+      studentMutations.removeByFilter(filter),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['students'] })
+      void queryClient.invalidateQueries({ queryKey: ['student-classes'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setPendingBulkFilter(null)
+      setBulkOpen(false)
+      setMutationError(null)
+    },
+    onError: (err: unknown) => {
+      setMutationError(errorMessage(err))
+    },
+  })
+
   const setStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: EntityStatus }) =>
       studentMutations.setStatus(id, status),
@@ -198,6 +220,24 @@ export function StudentsPage({
       void queryClient.invalidateQueries({ queryKey: ['students'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setPendingStatus(null)
+      setMutationError(null)
+    },
+    onError: (err: unknown) => {
+      setMutationError(errorMessage(err))
+    },
+  })
+
+  // Ends the candidate's portal session. The same operation both stops an
+  // active session and releases a stale one, which is why it reads "Sign
+  // out" rather than "End session": freeing the admission number for a
+  // fresh sign-in is the usual reason to reach for it.
+  const signOutMutation = useMutation({
+    mutationFn: (id: string) => studentMutations.endSession(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['students'] })
+      void queryClient.invalidateQueries({ queryKey: ['live-sessions'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setPendingSignOut(null)
       setMutationError(null)
     },
     onError: (err: unknown) => {
@@ -368,19 +408,9 @@ export function StudentsPage({
               <DropdownItem
                 icon={<Ban className="h-3.5 w-3.5" />}
                 destructive
-                onClick={() => {
-                  setMutationError(null)
-                  studentMutations.endSession(s.id)
-                    .then(() => {
-                      void queryClient.invalidateQueries({ queryKey: ['students'] })
-                      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-                    })
-                    .catch((err: unknown) => {
-                      setMutationError(errorMessage(err))
-                    })
-                }}
+                onClick={() => setPendingSignOut(s)}
               >
-                End session
+                Sign out
               </DropdownItem>
             </>
           )}
@@ -450,6 +480,17 @@ export function StudentsPage({
                 <Download className="h-4 w-4" />
                 Export
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkOpen(true)
+                  setMutationError(null)
+                }}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete by filter
+              </button>
             </ToolbarGroup>
             <button
               type="button"
@@ -457,7 +498,7 @@ export function StudentsPage({
                 setAddOpen(true)
                 setMutationError(null)
               }}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand-600 px-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 text-sm font-medium shadow-sm transition-colors hover:bg-[var(--cb-primary-dark)]"
             >
               <Plus className="h-4 w-4" />
               Add student
@@ -551,7 +592,7 @@ export function StudentsPage({
                 if (selected) setEditTarget(selected)
                 setSelected(null)
               }}
-              className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--cb-primary-dark)]"
             >
               Edit details
             </button>
@@ -594,6 +635,108 @@ export function StudentsPage({
             }
           })()
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkOpen}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={() => {
+          if (!pendingBulkFilter) return
+          bulkDeleteMutation.mutate(pendingBulkFilter)
+        }}
+        loading={bulkDeleteMutation.isPending}
+        destructive
+        title="Delete students by filter"
+        confirmLabel="Delete"
+        message={
+          <>
+            This will soft-delete every active student matching the filter below. Their
+            existing results and sessions are retained for reporting, and they will be
+            unable to sign in or start new examinations.
+            <br />
+            <br />
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Delete by
+            </label>
+            <div className="flex items-center gap-2 mb-3">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="radio"
+                  name="bulk-filter-type"
+                  checked={Boolean(pendingBulkFilter?.className)}
+                  onChange={() =>
+                    setPendingBulkFilter(
+                      pendingBulkFilter?.className
+                        ? { className: pendingBulkFilter.className }
+                        : { className: '' },
+                    )
+                  }
+                />
+                Class
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="radio"
+                  name="bulk-filter-type"
+                  checked={Boolean(pendingBulkFilter?.examId)}
+                  onChange={() =>
+                    setPendingBulkFilter(
+                      pendingBulkFilter?.examId
+                        ? { examId: pendingBulkFilter.examId }
+                        : { examId: '' },
+                    )
+                  }
+                />
+                Examination
+              </label>
+            </div>
+            {pendingBulkFilter?.className ? (
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Class
+                </label>
+                <select
+                  value={pendingBulkFilter?.className ?? ''}
+                  onChange={(ev) =>
+                    setPendingBulkFilter({ ...pendingBulkFilter, className: ev.target.value })
+                  }
+                  className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                >
+                  <option value="">Select a class</option>
+                  {classNames.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Examination
+                </label>
+                <select
+                  value={pendingBulkFilter?.examId ?? ''}
+                  onChange={(ev) =>
+                    setPendingBulkFilter({ ...pendingBulkFilter, examId: ev.target.value })
+                  }
+                  className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                >
+                  <option value="">Select an examination</option>
+                  {exams.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <p className="text-xs text-slate-500">
+              At least one filter must be selected. Students outside the filter are
+              unaffected.
+            </p>
+          </>
+        }
       />
 
       <ConfirmDialog
@@ -647,6 +790,27 @@ export function StudentsPage({
           )
         }
       />
+
+      <ConfirmDialog
+        open={pendingSignOut !== null}
+        onCancel={() => setPendingSignOut(null)}
+        onConfirm={() => pendingSignOut && signOutMutation.mutate(pendingSignOut.id)}
+        loading={signOutMutation.isPending}
+        destructive
+        title="Sign student out"
+        confirmLabel="Sign out"
+        message={
+          <>
+            This ends{' '}
+            <strong className="font-semibold text-slate-800">
+              {pendingSignOut?.firstName} {pendingSignOut?.lastName}
+            </strong>
+            's portal session immediately. Their admission number is free for a new sign-in,
+            which is also the fix when a candidate is refused with "already signed in on
+            another device" after a browser closed without signing out.
+          </>
+        }
+      />
     </div>
   )
 }
@@ -672,7 +836,7 @@ function StudentProfile({ student }: { student: Student }) {
       <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
         <span
           aria-hidden
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--cb-primary-bg)] text-sm font-semibold text-[var(--cb-primary-deep)]"
         >
           {student.firstName.charAt(0)}
           {student.lastName.charAt(0)}
@@ -729,16 +893,16 @@ function FormField({ label, required, error, children }: FormFieldProps) {
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-slate-700">
         {label}
-        {required && <span className="text-brand-600"> *</span>}
+        {required && <span className="text-[var(--cb-primary-deep)]"> *</span>}
       </span>
       {children}
-      {error && <span className="mt-1 block text-2xs text-brand-700">{error}</span>}
+      {error && <span className="mt-1 block text-2xs text-[var(--cb-primary-deep)]">{error}</span>}
     </label>
   )
 }
 
 const inputClass =
-  'mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
+  'mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--cb-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--cb-primary)]'
 
 /* -------------------------------------------------------------------------- */
 /* Add student                                                                 */
@@ -827,7 +991,7 @@ function AddStudentModal({
             type="submit"
             form="add-student-form"
             disabled={submitting}
-            className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-[var(--cb-primary-dark)] disabled:opacity-50"
           >
             {submitting ? 'Adding…' : 'Add student'}
           </button>
@@ -835,7 +999,7 @@ function AddStudentModal({
       }
     >
       {error && (
-        <p className="mb-4 rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800">
+        <p className="mb-4 rounded-md bg-[var(--cb-primary-bg)] px-3 py-2 text-sm text-[var(--cb-primary-deep)]">
           {error}
         </p>
       )}
@@ -1094,7 +1258,7 @@ function EditStudentModal({
             type="submit"
             form="edit-student-form"
             disabled={submitting}
-            className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-[var(--cb-primary-dark)] disabled:opacity-50"
           >
             {submitting ? 'Saving…' : 'Save changes'}
           </button>
@@ -1102,7 +1266,7 @@ function EditStudentModal({
       }
     >
       {error && (
-        <p className="mb-4 rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800">
+        <p className="mb-4 rounded-md bg-[var(--cb-primary-bg)] px-3 py-2 text-sm text-[var(--cb-primary-deep)]">
           {error}
         </p>
       )}
@@ -1339,7 +1503,7 @@ function ImportStudentsModal({ open, onClose, error, submitting, onSubmit }: Imp
             type="submit"
             form="import-students-form"
             disabled={submitting || rows.length === 0}
-            className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-md bg-[var(--cb-primary)] text-[var(--cb-primary-text)] px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-[var(--cb-primary-dark)] disabled:opacity-50"
           >
             {submitting ? 'Importing…' : `Import ${rows.length} student${rows.length === 1 ? '' : 's'}`}
           </button>
@@ -1361,7 +1525,7 @@ function ImportStudentsModal({ open, onClose, error, submitting, onSubmit }: Imp
             <p className="mt-1 text-2xs text-slate-500">Selected: {fileName}</p>
           )}
           {(parseError ?? error) && (
-            <p className="mt-2 rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800">
+            <p className="mt-2 rounded-md bg-[var(--cb-primary-bg)] px-3 py-2 text-sm text-[var(--cb-primary-deep)]">
               {parseError ?? error}
             </p>
           )}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Card, Button, Badge, Spinner } from '../../components/common'
+import { CheckCircle2 } from 'lucide-react'
+import { Card, Button, Badge, ProgressBar, Skeleton, Spinner } from '../../components/common'
 import { examAPI } from '../../services/api'
 
 interface ResultData {
@@ -48,8 +49,24 @@ export const ResultPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spinner className="text-indigo-600" />
+      <div className="mx-auto max-w-3xl space-y-6">
+        <Skeleton className="h-4 w-32" />
+        <Card>
+          <div className="flex flex-col items-center py-4">
+            <Skeleton className="h-7 w-20 rounded-full" />
+            <Skeleton className="mt-4 h-7 w-64" />
+            <Skeleton className="mt-2 h-4 w-40" />
+            <div className="mt-6 flex items-center gap-8">
+              <Skeleton className="h-16 w-24" />
+              <Skeleton className="h-16 w-24" />
+              <Skeleton className="h-16 w-24" />
+            </div>
+          </div>
+        </Card>
+        <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-500">
+          <Spinner className="h-4 w-4 text-indigo-600" />
+          Loading your result…
+        </div>
       </div>
     )
   }
@@ -73,6 +90,18 @@ export const ResultPage: React.FC = () => {
         <Link to="/dashboard" className="text-sm text-indigo-600 hover:underline">
           ← Back to Dashboard
         </Link>
+      </div>
+
+      {/* The candidate lands here straight after submitting, so the first
+          thing they see confirms the examination actually went through. */}
+      <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" aria-hidden />
+        <div>
+          <p className="text-sm font-medium text-green-900">Examination submitted</p>
+          <p className="text-xs text-green-700">
+            Your answers were recorded. Your result is shown below.
+          </p>
+        </div>
       </div>
 
       <Card className="text-center">
@@ -101,13 +130,8 @@ export const ResultPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full max-w-md mx-auto">
-          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${result.percentage >= 50 ? 'bg-green-500' : 'bg-red-500'}`}
-              style={{ width: `${result.percentage}%` }}
-            />
-          </div>
+        <div className="mx-auto w-full max-w-md">
+          <ProgressBar value={result.percentage} max={100} className="h-3" />
         </div>
       </Card>
 

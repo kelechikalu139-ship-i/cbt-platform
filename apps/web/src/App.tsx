@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { MainLayout } from './layouts/MainLayout'
@@ -10,7 +10,9 @@ import { ResultPage } from './pages/student/ResultPage'
 import { ProfilePage } from './pages/student/ProfilePage'
 import { ExamDetailPage } from './pages/exam/ExamDetailPage'
 import { ExamTakePage } from './pages/exam/ExamTakePage'
+import { api } from './services/api'
 import { useAuth } from './store'
+import { applyBranding, type Branding } from './utils/branding'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth()
@@ -21,6 +23,26 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 }
 
 const App: React.FC = () => {
+  const [branding, setBranding] = useState<Branding | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await api.get<{ data: Branding }>('/system/branding')
+        if (!cancelled) {
+          setBranding(response.data.data)
+          applyBranding(response.data.data)
+        }
+      } catch {
+        // Branding is non-critical: the app remains usable with fallback colours.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <BrowserRouter
       // Opt into the React Router v7 behaviours now: state updates wrapped
@@ -38,7 +60,7 @@ const App: React.FC = () => {
           <Route
             element={
               <ProtectedRoute>
-                <MainLayout />
+                <MainLayout branding={branding} />
               </ProtectedRoute>
             }
           >

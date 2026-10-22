@@ -3,14 +3,18 @@ import { requirePermission } from '../../middleware/auth.js'
 import { validate } from '../../middleware/validate.js'
 import { PERMISSIONS } from '../../constants/permissions.js'
 import {
+  bulkDeleteStudentsSchema,
   createStudentSchema,
+  extendStudentSessionSchema,
   idParamSchema,
   studentListQuerySchema,
   updateStudentSchema,
 } from './students.schema.js'
 import {
+  bulkDeleteStudentsController,
   createStudentController,
   deleteStudentController,
+  extendStudentSessionController,
   getStudentController,
   listClassesController,
   listStudentsController,
@@ -51,6 +55,14 @@ studentsRouter.get(
   schoolOptionsController,
 )
 
+/** Soft-delete every student matching a class or an examination. */
+studentsRouter.delete(
+  '/bulk',
+  requirePermission(PERMISSIONS.STUDENTS_DELETE),
+  validate({ body: bulkDeleteStudentsSchema }),
+  bulkDeleteStudentsController,
+)
+
 studentsRouter.post(
   '/',
   requirePermission(PERMISSIONS.STUDENTS_CREATE),
@@ -84,4 +96,11 @@ studentsRouter.post(
   requirePermission(PERMISSIONS.STUDENTS_UPDATE),
   validate({ params: idParamSchema }),
   logoutStudentController,
+)
+
+studentsRouter.post(
+  '/:id/extend-session',
+  requirePermission(PERMISSIONS.STUDENTS_UPDATE),
+  validate({ params: idParamSchema, body: extendStudentSessionSchema }),
+  extendStudentSessionController,
 )

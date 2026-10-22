@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { ZodError } from 'zod'
 import { Prisma } from '@prisma/client'
-import { isProduction } from '../config/env.js'
+import { isProduction, env } from '../config/env.js'
 import { isConnectionError, prisma } from '../config/database.js'
 import { logger } from '../config/logger.js'
 import { ApiError } from '../utils/api-error.js'
@@ -112,6 +112,22 @@ export function errorHandler(error: unknown, req: Request, res: Response, _next:
   const parserError = translateBodyParserError(error)
   if (parserError) {
     sendError(res, parserError.statusCode, parserError.message, parserError.details)
+    return
+  }
+
+  // --- Multer upload failures --------------------------------------------
+  const multerCode = (error as { code?: string } | null)?.code
+  if (typeof multerCode === 'string' && multerCode.startsWith('LIMIT_')) {
+    const message =
+      multerCode === 'LIMIT_FILE_SIZE'
+        ? `Uploaded file is too large (maximum ${env.MAX_UPLOAD_SIZE_MB} MB)`
+        : 'Invalid file upload'
+    logger.warn({ code: multerCode, requestId, path: req.path }, message)
+    sendError(
+      res,
+      multerCode === 'LIMIT_FILE_SIZE' ? 413 : 400,
+      message,
+    )
     return
   }
 

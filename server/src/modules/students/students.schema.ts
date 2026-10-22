@@ -85,6 +85,27 @@ export type CreateStudentInput = z.infer<typeof createStudentSchema>
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>
 export type StudentListQuery = z.infer<typeof studentListQuerySchema>
 
+export const extendStudentSessionSchema = z.object({
+  /** Minutes to add to the student's active portal session. */
+  additionalMinutes: z.coerce.number().int().min(1).max(480),
+});
+
+/** Soft-delete every student matching a class or an exam. At least one filter is required. */
+export const bulkDeleteStudentsSchema = z
+  .object({
+    className: z.string().trim().max(80).optional(),
+    examId: z.string().uuid('Must be a valid examination identifier').optional(),
+  })
+  .refine(
+    (data) => Boolean(data.className) || Boolean(data.examId),
+    {
+      message: 'Provide a class name or an examination to delete by',
+      path: ['className'],
+    },
+  );
+
+export type BulkDeleteStudentsInput = z.infer<typeof bulkDeleteStudentsSchema>;
+
 /** Sortable student columns, restricted to what the UI offers. */
 export const STUDENT_SORT_FIELDS = [
   'studentId',

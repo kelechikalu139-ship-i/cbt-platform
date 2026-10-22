@@ -5,6 +5,39 @@
 @layer base {
   :root {
     color-scheme: light;
+    /* Institutional brand, themed from `system.settings.primaryColor`. The
+       value below is the fallback used before settings load; `applyBrandColor`
+       overrides it at runtime, and passing `null` removes the override so this
+       fallback takes effect again.
+
+       `--cb-primary-text` must stay in step with what `applyBrandColor`
+       computes for `--cb-primary` (white on this navy, 6.03:1). A dark navy
+       here would drop the contrast on primary buttons to 2.03:1. */
+    --cb-primary: #3463a6;
+    --cb-primary-dark: #274e8b;
+    --cb-primary-bg: #eef3fb;
+    --cb-primary-deep: #1d3253;
+    --cb-primary-text: #ffffff;
+
+    /* Translucent variants of the brand colours.
+       Tailwind 3 cannot apply an opacity modifier to an arbitrary `var()`
+       value — `bg-[var(--cb-primary)]/30` is dropped from the build and
+       renders nothing. These pre-mixed variants are referenced directly
+       (`bg-[var(--cb-primary-a30)]`) so the intent actually ships.
+
+       Each one substitutes the base variable at computed-value time, so they
+       follow `applyBrandColor` automatically. `color-mix()` needs Chrome 111+,
+       Safari 16.2+ or Firefox 113+. */
+    --cb-primary-a15: color-mix(in srgb, var(--cb-primary) 15%, transparent);
+    --cb-primary-a20: color-mix(in srgb, var(--cb-primary) 20%, transparent);
+    --cb-primary-a30: color-mix(in srgb, var(--cb-primary) 30%, transparent);
+    --cb-primary-a40: color-mix(in srgb, var(--cb-primary) 40%, transparent);
+    --cb-primary-a50: color-mix(in srgb, var(--cb-primary) 50%, transparent);
+    --cb-primary-bg-a60: color-mix(in srgb, var(--cb-primary-bg) 60%, transparent);
+    --cb-primary-text-a10: color-mix(in srgb, var(--cb-primary-text) 10%, transparent);
+    --cb-primary-text-a20: color-mix(in srgb, var(--cb-primary-text) 20%, transparent);
+    --cb-primary-text-a60: color-mix(in srgb, var(--cb-primary-text) 60%, transparent);
+    --cb-primary-text-a80: color-mix(in srgb, var(--cb-primary-text) 80%, transparent);
   }
 
   html,
@@ -20,7 +53,7 @@
 
   /* Visible, consistent focus ring for keyboard users. */
   :focus-visible {
-    outline: 2px solid theme('colors.brand.500');
+    outline: 2px solid var(--cb-primary);
     outline-offset: 2px;
   }
 

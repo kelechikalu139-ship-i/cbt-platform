@@ -5,8 +5,13 @@ import { ApiError } from '../../utils/api-error.js'
 import { hashPassword } from '../../utils/password.js'
 import { buildMeta } from '../../utils/pagination.js'
 import { AUDIT_ACTIONS, recordAudit } from '../../services/audit.service.js'
-import { buildStudentListArgs } from './students.schema.js'
-import type { CreateStudentInput, StudentListQuery, UpdateStudentInput } from './students.schema.js'
+import { buildStudentListArgs, bulkDeleteStudentsSchema } from './students.schema.js'
+import type {
+  BulkDeleteStudentsInput,
+  CreateStudentInput,
+  StudentListQuery,
+  UpdateStudentInput,
+} from './students.schema.js'
 import type { PaginationMeta } from '../../utils/http-response.js'
 
 /**
@@ -167,16 +172,27 @@ export async function createStudent(
   // A portal login by this email may already exist — an earlier record was
   // deleted, or a roster import created the logins before the students. An
   // unlinked login is adopted and refreshed by this student; one already
-  // attached to another candidate is a genuine conflict.
+  // attached to another candidate is a genuine conflict. A staff account
+  // (super admin, invigilator, …) is never adopted — that would strip its
+  // privileges and lock the administrator out of their own dashboard.
   let adoptableLoginId: string | null = null
   if (input.userEmail) {
     const existingUser = await prisma.user.findFirst({
       where: { email: input.userEmail },
-      select: { id: true, student: { select: { id: true } } },
+      select: {
+        id: true,
+        student: { select: { id: true } },
+        role: { select: { code: true } },
+      },
     })
     if (existingUser?.student) {
       throw ApiError.conflict('A user with this email already exists', {
         userEmail: ['This email is already registered to another account'],
+      })
+    }
+    if (existingUser && existingUser.role.code !== 'STUDENT') {
+      throw ApiError.conflict('That email belongs to a staff account', {
+        userEmail: ['This email is already used by a staff account. Use a different email for the student portal login.'],
       })
     }
     adoptableLoginId = existingUser?.id ?? null
@@ -226,14 +242,20 @@ export async function createStudent(
         } else if (passwordHash && input.userEmail) {
           // No portal login existed — create one for the reactivated student,
           // or adopt the email's existing login when it is still unlinked
-          // (a previous record or a roster import left it behind).
+          // (a previous record or a roster import left it behind). A staff
+          // account is never adopted.
           const existingUser = await tx.user.findFirst({
             where: { email: input.userEmail },
-            select: { id: true, student: { select: { id: true } } },
+            select: { id: true, student: { select: { id: true } }, role: { select: { code: true } } },
           })
           if (existingUser?.student) {
             throw ApiError.conflict('A user with this email already exists', {
               userEmail: ['This email is already registered to another account'],
+            })
+          }
+          if (existingUser && existingUser.role.code !== 'STUDENT') {
+            throw ApiError.conflict('That email belongs to a staff account', {
+              userEmail: ['This email is already used by a staff account. Use a different email for the student portal login.'],
             })
           }
           if (existingUser) {
@@ -553,6 +575,68 @@ export async function listSchoolOptions(): Promise<SchoolOptions> {
 }
 
 /**
+ * Extend a student's active portal session (admin action).
+ *
+ * Pushes `sessionExpiresAt` forward on the linked user row so the
+ * candidate stays signed in longer without being forced to re-authenticate
+ * mid-examination. A student with no portal account cannot be extended.
+ */
+export async function extendStudentSession(
+  studentId: string,
+  additionalMinutes: number,
+  context: { actorId: string; ipAddress?: string | null; userAgent?: string | null },
+) {
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { id: true, studentId: true, userId: true, deletedAt: true },
+  })
+
+  if (!student || student.deletedAt !== null) {
+    throw ApiError.notFound('Student not found')
+  }
+
+  if (!student.userId) {
+    throw ApiError.badRequest('This student does not have a portal account', {
+      studentId: ['No portal session to extend'],
+    })
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: student.userId },
+    select: { id: true, sessionExpiresAt: true, status: true },
+  })
+
+  if (!user || user.status !== 'ACTIVE') {
+    throw ApiError.badRequest('This student cannot sign in at the moment', {
+      studentId: ['Student account is not active'],
+    })
+  }
+
+  const now = new Date()
+  const currentExpiry = user.sessionExpiresAt ?? now
+  const base = currentExpiry > now ? currentExpiry : now
+  const sessionExpiresAt = new Date(base.getTime() + additionalMinutes * 60_000)
+
+  await prisma.user.update({
+    where: { id: student.userId },
+    data: { sessionExpiresAt },
+  })
+
+  await recordAudit({
+    actorId: context.actorId,
+    action: 'EXTEND_STUDENT_SESSION',
+    entity: 'Student',
+    entityId: studentId,
+    description: `Extended portal session for ${student.studentId} by ${additionalMinutes} minute(s)`,
+    metadata: { studentId: student.studentId, additionalMinutes },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  })
+
+  return { success: true, sessionExpiresAt: sessionExpiresAt.toISOString() }
+}
+
+/**
  * End a student's active session (admin action).
  *
  * Clears the sessionHash and sessionExpiresAt on the linked user row,
@@ -594,4 +678,81 @@ export async function logoutStudent(
   })
 
   return { success: true }
+}
+
+/**
+ * Soft-delete every student matching a class or an examination.
+ *
+ * When `examId` is given, every candidate who has an ExamSession for that
+ * paper is deactivated — their results and sessions stay intact for
+ * reporting, but the student row is hidden from the register. When
+ * `className` is given, every student in that class is deactivated. Both
+ * filters may be supplied at once; the intersection is deleted.
+ *
+ * Portal logins are deactivated alongside so no one can sign in as a
+ * removed candidate.
+ */
+export async function deleteStudentsByFilter(
+  input: BulkDeleteStudentsInput,
+  context: { actorId: string; ipAddress?: string | null; userAgent?: string | null },
+): Promise<{ deleted: number }> {
+  const parsed = bulkDeleteStudentsSchema.parse(input)
+
+  const where: Prisma.StudentWhereInput = { deletedAt: null }
+
+  if (parsed.className) {
+    where.className = parsed.className
+  }
+
+  if (parsed.examId) {
+    const sessionStudentIds = await prisma.examSession.findMany({
+      where: { examId: parsed.examId },
+      select: { studentId: true },
+      distinct: ['studentId'],
+    })
+    if (sessionStudentIds.length === 0) {
+      return { deleted: 0 }
+    }
+    where.id = { in: sessionStudentIds.map((row) => row.studentId) }
+  }
+
+  const students = await prisma.student.findMany({
+    where,
+    select: { id: true, studentId: true, firstName: true, lastName: true, userId: true },
+  })
+
+  if (students.length === 0) {
+    return { deleted: 0 }
+  }
+
+  const ids = students.map((row) => row.id)
+
+  await runInTransaction(async (tx) => {
+    await tx.student.updateMany({
+      where: { id: { in: ids }, deletedAt: null },
+      data: { deletedAt: new Date(), status: 'INACTIVE' },
+    })
+
+    await tx.user.updateMany({
+      where: { student: { id: { in: ids } } },
+      data: { status: 'INACTIVE', refreshTokenHash: null },
+    })
+  })
+
+  await recordAudit({
+    actorId: context.actorId,
+    action: AUDIT_ACTIONS.DELETE_STUDENT,
+    entity: 'Student',
+    entityId: ids[0],
+    description: `Deactivated ${students.length} student(s)${parsed.className ? ` in class "${parsed.className}"` : ''}${parsed.examId ? ` for exam ${parsed.examId}` : ''}`,
+    metadata: {
+      filter: parsed,
+      count: students.length,
+      studentIds: ids,
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  })
+
+  return { deleted: students.length }
 }
