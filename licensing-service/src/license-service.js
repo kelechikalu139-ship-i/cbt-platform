@@ -5,15 +5,24 @@ export function generateActivationKey() {
   return `NCBT-${raw.match(/.{1,5}/g).join('-')}`
 }
 export function signLicense(payload, privateKey) {
-  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  const encodedPayload = Buffer.from(canonicalJson(payload)).toString('base64url')
   const signature = crypto.sign(null, Buffer.from(encodedPayload), privateKey).toString('base64url')
   return { payload, signature, algorithm: 'Ed25519' }
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }
 export function buildLicense(row, installationId, privateKey) {
   const features = typeof row.features === 'string' ? JSON.parse(row.features) : row.features
   const payload = {
     schemaVersion: 1, licenseId: row.id, institutionId: row.institution_id,
     institutionName: row.institution_name, plan: row.plan,
+    product: 'nurse-cbt',
     maxCandidates: Number(row.max_candidates),
     issuedAt: new Date(row.issued_at).toISOString(),
     expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,

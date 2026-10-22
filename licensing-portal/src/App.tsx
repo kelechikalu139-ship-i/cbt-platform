@@ -157,7 +157,7 @@ export default function App() {
           </div>
           <p className="eyebrow">PRODUCT OWNER CONSOLE</p>
           <h1>
-            Nurse CBT
+            The Platform CBT
             <br />
             Licence Manager
           </h1>

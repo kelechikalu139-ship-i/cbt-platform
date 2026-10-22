@@ -9,7 +9,7 @@ import { examsRouter } from '../modules/exams/exams.routes.js'
 import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js'
 import { resultsRouter } from '../modules/results/results.routes.js'
 import { portalRouter } from '../modules/portal/portal.routes.js'
-import { auditRouter, brandingRouter, healthRouter, systemRouter } from '../modules/system/system.routes.js'
+import { auditRouter, brandingRouter, healthRouter, licenseRouter, systemRouter } from '../modules/system/system.routes.js'
 
 /**
  * API v1 router (§23, §24).
@@ -28,6 +28,7 @@ apiRouter.use('/auth', authRouter)
 
 // --- Authenticated area --------------------------------------------------
 apiRouter.use(authenticate)
+apiRouter.use('/system/license', licenseRouter)
 apiRouter.use('/users', usersRouter)
 apiRouter.use('/students', studentsRouter)
 apiRouter.use('/categories', categoriesRouter)

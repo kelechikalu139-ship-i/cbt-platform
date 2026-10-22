@@ -8,6 +8,7 @@ import type {
   ExamInput,
   HealthProbe,
   ListQuery,
+  LocalLicenseInfo,
   LiveExamSession,
   Paginated,
   Question,
@@ -116,6 +117,14 @@ export const realSystemApi = {
   health: () => http.get<HealthProbe>('/health', { acceptStatuses: [503] }),
   /** Richer status card payload, behind `system.read`. */
   status: () => http.get<SystemStatus>('/system/status'),
+  /** Signed local license status; activation keys are never returned by the API. */
+  license: () => http.get<LocalLicenseInfo>('/system/license'),
+  /** Activate with the one-time key; only a verified signed claim is persisted locally. */
+  activateLicense: (activationKey: string) =>
+    http.post<LocalLicenseInfo>('/system/license/activate', { activationKey }),
+  /** Import an offline signed license file; the server verifies its signature and installation binding. */
+  importLicense: (signedLicense: unknown) =>
+    http.post<LocalLicenseInfo>('/system/license/import', { signedLicense }),
   /** System settings. */
   settings: () => http.get<SystemSettings>('/system/settings'),
   saveSettings: (patch: Partial<SystemSettings>) => http.patch<SystemSettings>('/system/settings', patch),

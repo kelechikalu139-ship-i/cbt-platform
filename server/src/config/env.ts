@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import crypto from 'node:crypto'
 import { z } from 'zod'
 
 /**
@@ -59,6 +60,10 @@ const schema = z.object({
     ),
   DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
   DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(10_000),
+
+  /** Public activation API and verification key. The private signing key is never configured here. */
+  LICENSING_API_URL: z.string().url().default('https://licenses.example.com'),
+  LICENSE_PUBLIC_KEY_B64: z.string().default(''),
 
   JWT_ACCESS_SECRET: z
     .string()
@@ -134,6 +139,25 @@ function load(): z.infer<typeof schema> {
 
     if (value.CORS_ORIGIN.includes('*')) {
       problems.push('CORS_ORIGIN must not be "*" in production')
+    }
+
+    if (!value.LICENSE_PUBLIC_KEY_B64 || value.LICENSE_PUBLIC_KEY_B64.startsWith('REPLACE_')) {
+      problems.push('LICENSE_PUBLIC_KEY_B64 must contain the licensing service Ed25519 public key')
+    } else {
+      try {
+        const publicKey = crypto.createPublicKey(Buffer.from(value.LICENSE_PUBLIC_KEY_B64, 'base64').toString('utf8'))
+        if (publicKey.asymmetricKeyType !== 'ed25519') problems.push('LICENSE_PUBLIC_KEY_B64 must be an Ed25519 public key')
+      } catch {
+        problems.push('LICENSE_PUBLIC_KEY_B64 is not a valid encoded public key')
+      }
+    }
+
+    const licensingApi = new URL(value.LICENSING_API_URL)
+    if (licensingApi.hostname === 'licenses.example.com') {
+      problems.push('LICENSING_API_URL must be set to the actual licensing service origin')
+    }
+    if (licensingApi.protocol !== 'https:' && !['localhost', '127.0.0.1', '::1'].includes(licensingApi.hostname)) {
+      problems.push('LICENSING_API_URL must use HTTPS outside localhost')
     }
 
     if (problems.length > 0) {

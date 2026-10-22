@@ -784,6 +784,15 @@ export interface SystemStatus {
   timestamp: string
 }
 
+export interface LocalLicenseInfo {
+  installationId: string
+  status: 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'UNACTIVATED' | 'INVALID'
+  plan: 'TRIAL' | 'STANDARD' | 'PROFESSIONAL' | 'ENTERPRISE' | null
+  expiresAt: string | null
+  maxCandidates: number | null
+  features: string[]
+}
+
 /**
  * School-wide settings.
  *
