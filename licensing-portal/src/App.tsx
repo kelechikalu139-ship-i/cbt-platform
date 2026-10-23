@@ -13,7 +13,14 @@ import {
   LogOut,
 } from "lucide-react";
 
-const API = (import.meta as any).env.VITE_LICENSING_API_URL || ((import.meta as any).env.DEV ? "http://127.0.0.1:18080" : "");
+const configuredApiUrl = import.meta.env.VITE_LICENSING_API_URL?.trim();
+const API = configuredApiUrl
+  ? configuredApiUrl.replace(/\/+$/, "")
+  : import.meta.env.DEV
+    ? "http://127.0.0.1:18080"
+    : "";
+const API_CONFIGURATION_ERROR =
+  "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 type Licence = {
   id: string;
   institution_id: string;
@@ -66,7 +73,7 @@ export default function App() {
   const [items, setItems] = useState<Licence[]>([]),
     [events, setEvents] = useState<LicenceEvent[]>([]),
     [admins, setAdmins] = useState<AdminAccount[]>([]),
-    [error, setError] = useState(""),
+    [error, setError] = useState(API ? "" : API_CONFIGURATION_ERROR),
     [busy, setBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState("");
@@ -91,19 +98,35 @@ export default function App() {
     ],
   });
   async function request(path: string, opts: RequestInit = {}, authToken = token) {
-    const r = await fetch(`${API}${path}`, {
+    if (!API) throw new Error(API_CONFIGURATION_ERROR);
+    const r = await fetch(new URL(path, `${API}/`), {
       ...opts,
       headers: {
         "Content-Type": "application/json",
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
     });
-    const d = await r.json().catch(() => ({ message: "Unexpected response" }));
+    const responseText = await r.text();
+    let d: any = null;
+    try {
+      d = JSON.parse(responseText);
+    } catch {
+      // Non-JSON responses are reported below with the request route and status.
+    }
     if (r.status === 401 && authToken && authToken === token) {
       setToken("");
       setUser(null);
     }
-    if (!r.ok) throw new Error(d.message || `Request failed (${r.status})`);
+    const route = path.split("?")[0];
+    if (!r.ok)
+      throw new Error(
+        d?.message ||
+          `Licensing API request to ${route} failed with HTTP ${r.status}. Check the API URL and service deployment.`,
+      );
+    if (d === null)
+      throw new Error(
+        `Licensing API returned a non-JSON response for ${route}. Check that VITE_LICENSING_API_URL points to the licensing service.`,
+      );
     return d;
   }
   useEffect(() => {

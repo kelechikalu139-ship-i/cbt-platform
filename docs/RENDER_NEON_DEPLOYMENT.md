@@ -22,6 +22,8 @@ VITE_LICENSING_API_URL=https://<licensing-api-service>.onrender.com
 
 Vite embeds this value into the browser bundle at build time, so save it and redeploy the Static Site after setting it. It must be the API's HTTPS origin, with no `/api` suffix.
 
+If sign-in reports a 404, inspect the failed request in the browser's Network panel. The login request should be `POST https://<licensing-api-service>.onrender.com/api/admin/login`. If it instead uses the portal's hostname, `VITE_LICENSING_API_URL` was missing or incorrect when the portal was built; set it on the Static Site and redeploy. Confirm the API service is live by opening its `/health` URL and checking that it reports `database: connected`.
+
 ## Create the licensing API Web Service
 
 In Render, choose New → Web Service and connect the same GitHub repository and `main` branch. Set:
