@@ -1,4 +1,6 @@
 import express, { type Application } from 'express'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import cors from 'cors'
 import helmet from 'helmet'
 import { randomUUID } from 'node:crypto'
@@ -17,6 +19,10 @@ import { globalLimiter } from './middleware/rate-limit.js'
  */
 export function createApp(): Application {
   const app = express()
+  const studentAppIndex = resolve(env.STUDENT_APP_DIR, 'index.html')
+  const adminAppIndex = resolve(env.ADMIN_APP_DIR, 'index.html')
+  const hasStudentApp = existsSync(studentAppIndex)
+  const hasAdminApp = existsSync(adminAppIndex)
 
   // The server sits behind no proxy in a school LAN, so `req.ip` is the real
   // client address. Trusting X-Forwarded-For here would let any student spoof
@@ -32,10 +38,15 @@ export function createApp(): Application {
       // nothing and removes any chance of injected script executing.
       contentSecurityPolicy: {
         directives: {
-          defaultSrc: ["'none'"],
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", 'data:'],
+          imgSrc: ["'self'", 'data:'],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
           frameAncestors: ["'none'"],
-          // Uploaded logos are served same-origin and rendered by both apps.
-          imgSrc: ["'self'"],
         },
       },
       // The API is not the origin of the HTML app, so cross-origin resource
@@ -118,6 +129,10 @@ export function createApp(): Application {
 
   // --- Routes ------------------------------------------------------------
   app.get('/', (_req, res) => {
+    if (hasStudentApp) {
+      res.sendFile(studentAppIndex)
+      return
+    }
     res.json({
       success: true,
       data: {
@@ -134,6 +149,24 @@ export function createApp(): Application {
   app.use('/api/v1/uploads', express.static(env.UPLOAD_DIR))
 
   app.use('/api/v1', apiRouter)
+
+  // Production packages place both browser applications beside the API. The
+  // student app owns `/`; staff use `/admin`. Missing builds are skipped so
+  // local API-only development and tests retain their existing behavior.
+  if (hasAdminApp) {
+    app.use('/admin', express.static(env.ADMIN_APP_DIR, { index: 'index.html' }))
+    app.use('/admin', (req, res, next) => {
+      if (req.method !== 'GET') return next()
+      res.sendFile(adminAppIndex)
+    })
+  }
+  if (hasStudentApp) {
+    app.use(express.static(env.STUDENT_APP_DIR, { index: 'index.html' }))
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next()
+      res.sendFile(studentAppIndex)
+    })
+  }
 
   app.use(notFoundHandler)
   app.use(errorHandler)

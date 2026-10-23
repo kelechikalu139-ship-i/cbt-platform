@@ -89,6 +89,10 @@ const schema = z.object({
 
   /** Folder uploaded files (logos, ...) are stored in, relative to the server cwd. */
   UPLOAD_DIR: z.string().min(1).default('./uploads'),
+  /** Built student SPA directory; mounted at the site root when present. */
+  STUDENT_APP_DIR: z.string().min(1).default('./public/student'),
+  /** Built administrator SPA directory; mounted under /admin when present. */
+  ADMIN_APP_DIR: z.string().min(1).default('./public/admin'),
   /** Largest single upload accepted, in mebibytes. */
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(100).default(5),
 
