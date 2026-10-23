@@ -60,3 +60,4 @@ server/uploads/
 *.pid
 *.seed
 *.pid.lock
+.neon

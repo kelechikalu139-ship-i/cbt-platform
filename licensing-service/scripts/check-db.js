@@ -2,6 +2,7 @@ import "dotenv/config";
 import pg from "pg";
 
 const { Pool } = pg;
+const expectedDatabase = process.env.EXPECTED_DATABASE_NAME || "cbt_licensing_platform";
 function safeErrorCode(error) {
   if (error?.code) return error.code;
   const message = String(error?.message || "").toLowerCase();
@@ -47,7 +48,7 @@ if (!process.env.DATABASE_URL) {
       JSON.stringify({
         connected: true,
         database,
-        expectedDatabase: database === "cbt_licensing_platform",
+        expectedDatabase: database === expectedDatabase,
         postgresVersion: rows[0].version,
         licensesTable: metadata.rows[0].licenses_table,
         licenseEventsTable: metadata.rows[0].license_events_table,
@@ -58,7 +59,7 @@ if (!process.env.DATABASE_URL) {
         schemaReady,
       }),
     );
-    if (database !== "cbt_licensing_platform") process.exitCode = 2;
+    if (database !== expectedDatabase) process.exitCode = 2;
     if (!schemaReady) process.exitCode = 3;
   } catch (error) {
     let target = { configuredDatabase: null, hostLooksLocal: null, sslMode: null, pgSslEnabled: process.env.PGSSL === "true" };

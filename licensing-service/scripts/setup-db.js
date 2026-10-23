@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 const { Pool } = pg;
+const expectedDatabase = process.env.EXPECTED_DATABASE_NAME || "cbt_licensing_platform";
 function safeErrorCode(error) {
   if (error?.code) return error.code;
   const message = String(error?.message || "").toLowerCase();
@@ -27,15 +28,15 @@ if (!process.env.DATABASE_URL) {
 
   try {
     const { rows } = await pool.query("SELECT current_database() AS database");
-    if (rows[0].database !== "cbt_licensing_platform") {
-      throw new Error("Refusing schema setup outside cbt_licensing_platform");
+    if (rows[0].database !== expectedDatabase) {
+      throw new Error(`Refusing schema setup outside ${expectedDatabase}`);
     }
     const schema = await readFile(
       fileURLToPath(new URL("../schema.sql", import.meta.url)),
       "utf8",
     );
     await pool.query(schema);
-    console.log("Licensing schema is ready in cbt_licensing_platform.");
+    console.log(`Licensing schema is ready in ${expectedDatabase}.`);
   } catch (error) {
     console.error(
       JSON.stringify({

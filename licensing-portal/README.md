@@ -43,8 +43,12 @@ This is the product-owner portal for the central licensing service. It includes 
 
 6. Open the one-time setup URL to register the first super-admin. After that, the portal shows only sign-in; the super-admin can create staff invitation links from **Administrator access** on the dashboard.
 
+## Deploy to Render with Neon
+
+Follow [the Render and Neon deployment guide](../docs/RENDER_NEON_DEPLOYMENT.md). The key Render setting for this monorepo is to set the portal Static Site's Root Directory to `licensing-portal` and its Publish Directory to `dist`. Deploy the API as a separate Node Web Service rooted at `licensing-service`.
+
 ## CBT client installation
 
-The portal issues activation credentials, but this repository does not yet include a customer-ready CBT installer. There is no supported Windows `.exe` or `.msi` for clients to download. A signed Windows package, service installation, configuration, upgrade/rollback, and uninstall/data-retention flow still need to be built and validated before a school can install the CBT as a supported product. The existing CBT source/development setup is not a customer deployment package.
+The portal issues activation credentials. A Windows installer build project now exists under `deployment/windows`, but a signed and production-validated `.exe` is not available for clients to download yet.
 
 The portal only accepts the API origin configured in `PORTAL_ORIGIN`; keep the portal and API origins aligned. Development defaults to `http://127.0.0.1:18080` for the API. Restart Vite after changing environment configuration. For a production build, set `VITE_LICENSING_API_URL` to the public HTTPS API origin before running `npm run build`.

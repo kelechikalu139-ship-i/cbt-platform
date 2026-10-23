@@ -86,11 +86,11 @@ The offline path does not need a connection during exam delivery, but no grace a
 
 ## Render deployment guide (not yet deployed)
 
-1. Provision a managed PostgreSQL database and a Node web service from `licensing-service/` in the selected Git repository. Set build/install to `npm install`; start to `npm start`; use the health path `/health`.
-2. Set `DATABASE_URL` to the provider's internal PostgreSQL connection URL, `PGSSL=true` when required by the provider, and `DB_POOL_SIZE` within the database connection budget. Run `npm run db:setup` as a release/migration step before starting the API.
+1. Provision Neon PostgreSQL and a Render Node web service rooted at `licensing-service/`. Set build/install to `npm install`; start to `npm start`; use the health path `/health`. For Render, set the portal static site root directory to `licensing-portal/` and publish directory to `dist/`.
+2. Set `DATABASE_URL` to Neon's pooled PostgreSQL connection URL, `PGSSL=true`, and `DB_POOL_SIZE` within the database connection budget. The API applies the idempotent schema at startup; `npm run db:setup` is available for explicit setup and is guarded by `EXPECTED_DATABASE_NAME` (default `cbt_licensing_platform`).
 3. Set `PORTAL_ORIGIN` to the exact HTTPS static-site origin. Inject a generated 32+ character `JWT_SECRET` and matching Ed25519 private/public keys as protected API secrets. Do not place the private key in the portal or school server.
 4. For first setup, provide `LICENSE_ADMIN_EMAIL` and `PORTAL_ORIGIN`, then run `npm run admin:bootstrap`. It creates a 30-minute one-time setup link only while there are no admin accounts; the first super-admin chooses a password in the portal. If the sole super-admin needs recovery, `npm run admin:recover` updates that account using a hidden password prompt. After setup, the portal defaults to sign-in, and additional accounts require super-admin invitations.
-5. Build `licensing-portal/` as a separate static site using `npm install && npm run build`; publish `dist`. Set build-time `VITE_LICENSING_API_URL` to the API service's HTTPS origin, without a trailing path prefix.
+5. Build `licensing-portal/` as a separate static site using `npm install && npm run build`; publish `dist` relative to the portal root directory. Set build-time `VITE_LICENSING_API_URL` to the API service's HTTPS origin, without a trailing path prefix.
 6. Deploy the API, wait for `/health` to return `{"status":"ok","database":"connected"}`, then build/deploy the portal and test admin login, invited registration, disable behavior, issue, activation, revoke, invalid signature and expired license against a disposable database.
 7. Confirm logs contain no secrets, PostgreSQL access is limited to the service, backups are enabled at the provider, CORS rejects a different origin, and the signing key backup/rotation procedure is recorded.
 
