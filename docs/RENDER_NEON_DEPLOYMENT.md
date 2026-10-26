@@ -70,4 +70,6 @@ After both Render services are live:
 3. Sign in, enroll MFA, and verify an invitation and license issue/activation flow using a test institution.
 4. Confirm a different browser origin is rejected by CORS and logs do not expose database or key values.
 
+For a forgotten Super Admin password, run `npm run admin:recover` from the licensing-service directory using the Neon connection and `EXPECTED_DATABASE_NAME=neondb`. The command reads the new password through a hidden interactive prompt and updates the active Super Admin record; never paste that password into chat or the environment file.
+
 The root `.env.local`, `licensing-service/.env`, and `licensing-portal/.env` are local files and must not be uploaded to GitHub. Set production values through Render's dashboard. Do not put the license private key in the portal, Windows installer, or customer CBT server.

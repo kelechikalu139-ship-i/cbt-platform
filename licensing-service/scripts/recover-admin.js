@@ -6,6 +6,8 @@ import pg from "pg";
 
 const { Pool } = pg;
 const email = process.env.LICENSE_ADMIN_EMAIL?.trim().toLowerCase();
+const expectedDatabase =
+  process.env.EXPECTED_DATABASE_NAME || "cbt_licensing_platform";
 
 async function readHidden(prompt) {
   if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function")
@@ -60,7 +62,8 @@ if (!email || !process.env.DATABASE_URL) {
     try {
       await client.query("BEGIN");
       const db = await client.query("SELECT current_database() AS name");
-      if (db.rows[0].name !== "cbt_licensing_platform") throw new Error("Refusing recovery outside cbt_licensing_platform");
+      if (db.rows[0].name !== expectedDatabase)
+        throw new Error(`Refusing recovery outside ${expectedDatabase}`);
       await client.query("SELECT pg_advisory_xact_lock(hashtext('licensing-super-admin-bootstrap'))");
       const { rows } = await client.query("SELECT id,email,status FROM licensing_admins WHERE role='SUPER_ADMIN' FOR UPDATE");
       if (rows.length !== 1 || rows[0].status !== "ACTIVE") throw new Error("Recovery requires exactly one active super-admin account");
