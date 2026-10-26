@@ -1,4 +1,4 @@
-import { Check, Database, RotateCcw, Save, Server, ShieldCheck, Upload, X } from 'lucide-react'
+import { Check, Database, KeyRound, RotateCcw, Save, Server, ShieldCheck, Upload, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   Alert,
@@ -18,7 +18,7 @@ import { systemApi } from '../../services'
 import { applyBrandColor } from '../../utils/theme'
 import { cn } from '../../utils'
 import { useApiErrorMessage } from '../../hooks/useApiErrorMessage'
-import type { BackupInfo, SystemSettings } from '../../types'
+import type { BackupInfo, LocalLicenseInfo, SystemSettings } from '../../types'
 
 interface SettingsPageProps {
   settings: SystemSettings
@@ -54,6 +54,12 @@ export function SettingsPage({
   const [installationId, setInstallationId] = useState<string | null>(null)
   const [installationLoading, setInstallationLoading] = useState(false)
   const [copying, setCopying] = useState(false)
+  const [licenseInfo, setLicenseInfo] = useState<LocalLicenseInfo | null>(null)
+  const [licenseKey, setLicenseKey] = useState('')
+  const [licenseLoading, setLicenseLoading] = useState(false)
+  const [licenseActivating, setLicenseActivating] = useState(false)
+  const [licenseErrorRaw, setLicenseErrorRaw] = useState<unknown>(null)
+  const licenseError = useApiErrorMessage(licenseErrorRaw)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [backups, setBackups] = useState<BackupInfo[]>([])
@@ -77,6 +83,49 @@ export function SettingsPage({
       .catch(() => setInstallationId(null))
       .finally(() => setInstallationLoading(false))
   }, [])
+
+  useEffect(() => {
+    setLicenseLoading(true)
+    void systemApi
+      .license()
+      .then((license) => setLicenseInfo(license))
+      .catch(() => setLicenseInfo(null))
+      .finally(() => setLicenseLoading(false))
+  }, [])
+
+  const activateLicense = () => {
+    if (!licenseKey.trim() || licenseActivating) return
+    setLicenseErrorRaw(null)
+    setLicenseActivating(true)
+    void systemApi
+      .activateLicense(licenseKey.trim())
+      .then((license) => {
+        setLicenseInfo(license)
+        setLicenseKey('')
+      })
+      .catch((cause: unknown) => setLicenseErrorRaw(cause))
+      .finally(() => setLicenseActivating(false))
+  }
+
+  const importOfflineLicense = async (file: File | undefined) => {
+    if (!file) return
+    setLicenseErrorRaw(null)
+    if (file.size > 128 * 1024) {
+      setLicenseErrorRaw(new Error('The signed license file is larger than 128 KB.'))
+      return
+    }
+    setLicenseActivating(true)
+    try {
+      const signedLicense: unknown = JSON.parse(await file.text())
+      const imported = await systemApi.importLicense(signedLicense)
+      setLicenseInfo(imported)
+      setLicenseKey('')
+    } catch (cause) {
+      setLicenseErrorRaw(cause)
+    } finally {
+      setLicenseActivating(false)
+    }
+  }
 
   // List available backups so the restore panel can offer them.
   useEffect(() => {
@@ -557,6 +606,75 @@ export function SettingsPage({
                 Phase 13
               </Badge>
             </button>
+
+            <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">License</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {licenseLoading
+                      ? 'Checking signed license…'
+                      : licenseInfo?.plan
+                        ? `${licenseInfo.plan} · ${licenseInfo.maxCandidates ?? 0} candidates`
+                        : 'No active license on this installation'}
+                  </p>
+                </div>
+                <Badge
+                  tone={licenseInfo?.status === 'ACTIVE' || licenseInfo?.status === 'TRIAL' ? 'success' : licenseInfo?.status === 'EXPIRED' || licenseInfo?.status === 'REVOKED' || licenseInfo?.status === 'INVALID' ? 'danger' : 'neutral'}
+                  dot
+                >
+                  {licenseLoading ? 'Checking' : licenseInfo?.status ?? 'Unknown'}
+                </Badge>
+              </div>
+              {licenseInfo?.expiresAt && (
+                <p className="text-xs text-slate-500">
+                  Expires {new Date(licenseInfo.expiresAt).toLocaleDateString()}
+                </p>
+              )}
+              <Input
+                label="Activation key"
+                value={licenseKey}
+                onChange={(event) => setLicenseKey(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    activateLicense()
+                  }
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={licenseActivating}
+              />
+              <Button
+                type="button"
+                size="sm"
+                icon={<KeyRound className="h-4 w-4" />}
+                loading={licenseActivating}
+                disabled={!licenseKey.trim() || licenseActivating}
+                onClick={activateLicense}
+              >
+                Activate license
+              </Button>
+              <label className="block text-xs font-medium text-slate-600">
+                Or import an offline signed license file
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  disabled={licenseActivating}
+                  className="mt-1.5 block w-full text-xs file:mr-3 file:rounded file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-amber-50 disabled:opacity-50"
+                  onChange={(event) => {
+                    void importOfflineLicense(event.currentTarget.files?.[0])
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
+              {licenseError && <Alert tone="danger">{licenseError}</Alert>}
+              {licenseInfo?.status === 'UNACTIVATED' && (
+                <p className="text-xs text-slate-500">
+                  Activation needs a connection to the licensing service. Normal LAN exams do not.
+                </p>
+              )}
+            </div>
 
             {installationId && copying && (
               <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">

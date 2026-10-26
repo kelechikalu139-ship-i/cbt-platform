@@ -1,6 +1,36 @@
 {
-  "name":"cbt-licensing-service","version":"1.0.0","private":true,"type":"module",
-  "engines":{"node":">=20.11.0"},
-  "scripts":{"start":"node src/server.js","dev":"node --watch src/server.js","check":"node --check src/server.js && node --check src/license-service.js"},
-  "dependencies":{"bcrypt":"^6.0.0","cors":"^2.8.5","dotenv":"^16.4.7","express":"^5.2.1","express-rate-limit":"^7.5.0","helmet":"^8.0.0","jsonwebtoken":"^9.0.2","mysql2":"^3.14.0","zod":"^4.6.5"}
+  "name": "cbt-licensing-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/license-service.js && node --check src/license-policy.js && node --check scripts/check-db.js && node --check scripts/setup-db.js && node --check scripts/check-signing-keys.js && node --check scripts/setup-local-signing-keys.js && node --check scripts/setup-local-mfa-key.js && node --check scripts/bootstrap-admin.js && node --check scripts/recover-admin.js && node --check scripts/reset-admin-mfa.js && node --check tests/license-policy.test.js && node --check tests/postgres.integration.test.js && node --check tests/http.integration.test.js",
+    "test": "node --test",
+    "db:check": "node scripts/check-db.js",
+    "db:setup": "node scripts/setup-db.js",
+    "test:db": "node --test tests/postgres.integration.test.js",
+    "test:http": "node --test tests/http.integration.test.js",
+    "keys:setup:local": "node scripts/setup-local-signing-keys.js",
+    "keys:check": "node scripts/check-signing-keys.js",
+    "admin:bootstrap": "node scripts/bootstrap-admin.js",
+    "admin:recover": "node scripts/recover-admin.js",
+    "admin:mfa:reset": "node scripts/reset-admin-mfa.js",
+    "mfa:key:setup": "node scripts/setup-local-mfa-key.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "zod": "^4.6.5"
+  }
 }

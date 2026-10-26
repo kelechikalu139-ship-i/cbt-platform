@@ -1,6 +1,6 @@
 import * as mocks from '../mocks'
 import type { LoginResponse } from './admin.api'
-import type { ExamAttemptSummary, LiveExamSession, BackupInfo } from '../types'
+import type { ExamAttemptSummary, LiveExamSession, BackupInfo, LocalLicenseInfo } from '../types'
 import {
   realAuditApi,
   realAuthApi,
@@ -107,6 +107,18 @@ export const systemApi = pick(
   {
     health: () => mocks.mockSystemApi.health(),
     status: () => mocks.mockSystemApi.status(),
+    license: async (): Promise<LocalLicenseInfo> => ({
+      installationId: (await mocks.mockSystemApi.status()).installationId ?? 'mock-installation',
+      status: 'UNACTIVATED',
+      plan: null,
+      expiresAt: null,
+      maxCandidates: null,
+      features: [],
+    }),
+    activateLicense: (_activationKey: string): Promise<LocalLicenseInfo> =>
+      Promise.reject(new Error('License activation is disabled in mock mode.')),
+    importLicense: (_signedLicense: unknown): Promise<LocalLicenseInfo> =>
+      Promise.reject(new Error('Offline license import is disabled in mock mode.')),
     settings: () => mocks.mockSystemApi.settings(),
     saveSettings: mocks.mockSystemApi.saveSettings,
     uploadLogo: (file: File) =>
@@ -127,6 +139,9 @@ export const systemApi = pick(
   {
     health: realSystemApi.health,
     status: realSystemApi.status,
+    license: realSystemApi.license,
+    activateLicense: realSystemApi.activateLicense,
+    importLicense: realSystemApi.importLicense,
     settings: realSystemApi.settings,
     saveSettings: realSystemApi.saveSettings,
     uploadLogo: realSystemApi.uploadLogo,

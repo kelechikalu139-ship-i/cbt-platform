@@ -1,7 +1,8 @@
-<<<<<<< HEAD
 # CBT Platform
 
 A Computer Based Testing (CBT) platform monorepo for managing and delivering online exams to students.
+
+Commercial deployment status is tracked in the [readiness audit](docs/COMMERCIAL_DEPLOYMENT_READINESS.md). This repository is not yet ready for a customer installation.
 
 ## Architecture
 
@@ -65,20 +66,18 @@ to a single page: matriculation number entry.
 
 ### Mock mode
 
-The server is not built yet, so the student app runs against an in-memory data
-layer by default. Any matric number of 3-20 letters, digits, `/` or `-` is
-accepted, and a profile (name, program, level) is derived from it.
+The student app can use an in-memory mock for frontend development. The Express
+API and MariaDB Prisma schema are present in this repository; mock mode does not
+represent production authentication or data.
 
 - Set `VITE_USE_MOCK=false` in `apps/web/.env` to switch to the real API at
   `VITE_API_URL`.
-- The mock implements the same interface as the real API, so no page code changes
-  are needed when the backend lands.
+- The mock implements the student app's service interface for local UI work.
 - `npm run verify:mock -w apps/web` exercises the mock layer (36 assertions
   covering auth, the exam lifecycle, scoring, and session resumption).
 
-Once the backend enforces the real model, `POST /auth/login` should accept
-`{ matricNumber }` and reject any matric that has not been provisioned by an
-admin. The client already sends exactly that shape.
+Use the repository's actual API routes and schemas when integrating the student
+app; do not rely on mock behavior as evidence of server-side enforcement.
 
 ## Available Scripts
 
@@ -124,29 +123,10 @@ cbt-platform/
 - Results with score breakdown and answer review
 - Profile with admin-managed fields locked as read-only
 
-## API Status
+## Current status
 
-Phase 1 is complete and verified against a live MariaDB:
-
-- 18 Prisma models, 29 permissions, 6 roles
-- 41 routes under `/api/v1` covering auth, users, students, categories, subjects,
-  questions, exams (including publish/unpublish), audit logs and health
-- Refresh-token rotation with replay detection, generic login failures,
-  permission-guarded endpoints, and audit logging of all mutations
-- 77 Vitest tests and a 51-check end-to-end smoke suite, all passing
-
-Deferred to later phases: exam sessions, grading and results, settings, and
-licensing.
-
-The admin app's connection layer is wired and sign-in is verified end to end
-against the live API, but the app is **not yet usable beyond the login screen**:
-it was built against a hypothetical schema and disagrees with the backend on enum
-casing (upper vs lower), on the permission vocabulary (14 coarse vs 29
-fine-grained), and it calls a `/dashboard` endpoint that does not exist. The full
-findings and the options for resolving them are in
-[Wiring the frontends](server/README.md#wiring-the-frontends).
-
-The student app (`apps/web`) is untouched and still points at port 3001.
-=======
-# cbt-platform
->>>>>>> 67ebb6464a4cfb378f9d35c9ad48e793190d27db
+The older API status and frontend wiring notes in earlier revisions of this
+README were stale. See the [commercial readiness audit](docs/COMMERCIAL_DEPLOYMENT_READINESS.md)
+for repository evidence, current verification results, release blockers, and
+deployment procedures. The central licensing service uses PostgreSQL; the
+school CBT server remains on MariaDB.

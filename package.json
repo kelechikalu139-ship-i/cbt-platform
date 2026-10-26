@@ -28,9 +28,9 @@
     "health:check": "node scripts/health-check.js"
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
+    "@types/node": "^22.5.4",
     "tsx": "^4.19.1",
-    "@types/node": "^22.5.4"
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -44,5 +44,9 @@
     "@prisma/client": true,
     "@prisma/engines": true,
     "@prisma/get-platform": true
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4"
   }
 }

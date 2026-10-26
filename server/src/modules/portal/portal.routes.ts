@@ -5,6 +5,7 @@ import { asyncHandler } from '../../utils/async-handler.js'
 import { sendData } from '../../utils/http-response.js'
 import { clientIp, userAgentOf } from '../../services/audit.service.js'
 import { ROLE_CODES } from '../../constants/permissions.js'
+import { requireActiveLicense } from '../../middleware/license.js'
 import {
   idParamSchema,
   saveAnswerSchema,
@@ -109,6 +110,7 @@ portalRouter.get(
 portalRouter.post(
   '/sessions/start',
   studentOnly,
+  requireActiveLicense,
   validate({ body: startSessionSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const { examId } = req.body as { examId: string }

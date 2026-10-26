@@ -84,6 +84,7 @@ enum SubjectStatus {
 enum LicenseStatus {
   ACTIVE
   EXPIRED
+  SUSPENDED
   REVOKED
   TRIAL
 }
@@ -545,8 +546,9 @@ model SystemSetting {
 model License {
   id             String @id @default(uuid()) @db.Char(36)
   installationId String @unique @db.VarChar(64)
-  licenseKey     String @unique @db.VarChar(255)
-  /// Digest of the key, never the key itself in audit output.
+  /// Deprecated compatibility column. Centrally activated keys are never stored.
+  licenseKey     String? @unique @db.VarChar(255)
+  /// Digest of the activation key; raw activation keys are never persisted.
   licenseKeyHash String? @db.Char(64)
   type           LicenseType @default(TRIAL)
   status         LicenseStatus @default(TRIAL)
@@ -556,6 +558,9 @@ model License {
   studentLimit   Int
   seatsInUse     Int     @default(0)
   features       Json?
+  signedLicense  Json?
+  lastValidatedAt DateTime?
+  offlineGraceUntil DateTime?
   activatedAt    DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

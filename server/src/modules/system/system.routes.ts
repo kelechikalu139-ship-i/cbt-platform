@@ -1,14 +1,18 @@
 import { z } from 'zod'
+import { createHash } from 'node:crypto'
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { join, sep } from 'node:path'
-import { requirePermission } from '../../middleware/auth.js'
+import { currentUser, requirePermission } from '../../middleware/auth.js'
 import { validate } from '../../middleware/validate.js'
 import { asyncHandler } from '../../utils/async-handler.js'
 import { sendData, sendPaginated } from '../../utils/http-response.js'
 import { ApiError } from '../../utils/api-error.js'
 import { prisma } from '../../config/database.js'
+import { Prisma } from '@prisma/client'
 import { env } from '../../config/env.js'
 import { PERMISSIONS } from '../../constants/permissions.js'
+import { verifySignedLicense, type SignedLicense, type VerifiedLicense } from '../../utils/license.js'
+import { ensureInstallationId } from '../../services/installation.service.js'
 import { buildMeta, escapeSearchTerm, normaliseSearch, resolvePagination } from '../../utils/pagination.js'
 import { uploadLogo, uploadUrl, deleteUploadedFile } from '../../services/upload.service.js'
 import { restart } from '../../server.js'
@@ -74,17 +78,20 @@ systemRouter.get(
     let database: 'connected' | 'unavailable' = 'connected'
     let counts: { students: number; questions: number; exams: number; results: number } | null = null
     let installationId: string | null = null
+    let license: { status: string; type: string; expiresAt: Date | null; studentLimit: number } | null = null
 
     try {
-      const [students, questions, exams, results, license] = await Promise.all([
+      const [students, questions, exams, results, installation, activeLicense] = await Promise.all([
         prisma.student.count({ where: { deletedAt: null } }),
         prisma.question.count({ where: { deletedAt: null } }),
         prisma.exam.count({ where: { deletedAt: null } }),
         prisma.result.count(),
-        prisma.license.findFirst({ select: { installationId: true } }),
+        ensureInstallationId(),
+        prisma.license.findFirst({ orderBy: { updatedAt: 'desc' }, select: { status: true, type: true, expiresAt: true, studentLimit: true } }),
       ])
       counts = { students, questions, exams, results }
-      installationId = license?.installationId ?? null
+      installationId = installation
+      license = activeLicense
     } catch {
       database = 'unavailable'
     }
@@ -104,6 +111,12 @@ systemRouter.get(
       database,
       counts,
       installationId,
+      license: license ? {
+        status: license.status,
+        plan: license.type,
+        expiresAt: license.expiresAt?.toISOString() ?? null,
+        maxCandidates: license.studentLimit,
+      } : { status: 'UNACTIVATED', plan: null, expiresAt: null, maxCandidates: null },
       timestamp: new Date().toISOString(),
     })
   }),
@@ -245,6 +258,192 @@ async function loadSettings() {
 }
 
 export { loadSettings }
+
+export const licenseRouter = Router()
+
+async function persistSignedLicense(
+  actorId: string,
+  installationId: string,
+  claims: VerifiedLicense,
+  signedLicense: SignedLicense,
+  licenseKeyHash: string | null,
+  action: 'LICENSE_ACTIVATED' | 'LICENSE_IMPORTED',
+) {
+  const now = new Date()
+  await prisma.$transaction(async (tx) => {
+    await tx.license.upsert({
+      where: { id: claims.licenseId },
+      create: {
+        id: claims.licenseId,
+        installationId,
+        licenseKey: null,
+        licenseKeyHash,
+        type: claims.plan,
+        status: claims.plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE',
+        issuedTo: claims.institutionName,
+        issuedAt: new Date(claims.issuedAt),
+        expiresAt: claims.expiresAt ? new Date(claims.expiresAt) : null,
+        studentLimit: claims.maxCandidates,
+        features: claims.features,
+        signedLicense: signedLicense as unknown as Prisma.InputJsonValue,
+        lastValidatedAt: now,
+        activatedAt: now,
+      },
+      update: {
+        installationId,
+        licenseKey: null,
+        licenseKeyHash,
+        type: claims.plan,
+        status: claims.plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE',
+        issuedTo: claims.institutionName,
+        issuedAt: new Date(claims.issuedAt),
+        expiresAt: claims.expiresAt ? new Date(claims.expiresAt) : null,
+        studentLimit: claims.maxCandidates,
+        features: claims.features,
+        signedLicense: signedLicense as unknown as Prisma.InputJsonValue,
+        lastValidatedAt: now,
+        activatedAt: now,
+      },
+    })
+    await tx.auditLog.create({
+      data: {
+        actorId,
+        action,
+        entity: 'License',
+        entityId: claims.licenseId,
+        description: action === 'LICENSE_ACTIVATED'
+          ? 'A signed central license was activated on this installation'
+          : 'An offline signed license was imported on this installation',
+        metadata: { institutionId: claims.institutionId, plan: claims.plan },
+      },
+    })
+  })
+}
+
+licenseRouter.get(
+  '/',
+  requirePermission(PERMISSIONS.LICENSE_READ),
+  asyncHandler(async (_req: Request, res: Response) => {
+    const installationId = await ensureInstallationId()
+    const license = await prisma.license.findFirst({
+      where: { installationId },
+      orderBy: { updatedAt: 'desc' },
+      select: { status: true, type: true, expiresAt: true, studentLimit: true, features: true, signedLicense: true },
+    })
+    if (!license) {
+      sendData(res, { installationId, status: 'UNACTIVATED', plan: null, expiresAt: null, maxCandidates: null, features: [] })
+      return
+    }
+
+    if (!license.signedLicense || !env.LICENSE_PUBLIC_KEY_B64) {
+      sendData(res, { installationId, status: 'INVALID', plan: null, expiresAt: null, maxCandidates: null, features: [] })
+      return
+    }
+    try {
+      const publicKeyPem = Buffer.from(env.LICENSE_PUBLIC_KEY_B64, 'base64').toString('utf8')
+      const claims = verifySignedLicense(license.signedLicense as unknown as SignedLicense, {
+        publicKeyPem,
+        installationId,
+        allowExpired: true,
+      })
+      sendData(res, {
+        installationId,
+        status: claims.expiresAt && Date.parse(claims.expiresAt) <= Date.now() ? 'EXPIRED' : license.status,
+        plan: claims.plan,
+        expiresAt: claims.expiresAt,
+        maxCandidates: claims.maxCandidates,
+        features: claims.features,
+      })
+    } catch {
+      sendData(res, { installationId, status: 'INVALID', plan: null, expiresAt: null, maxCandidates: null, features: [] })
+    }
+  }),
+)
+
+licenseRouter.post(
+  '/activate',
+  requirePermission(PERMISSIONS.LICENSE_MANAGE),
+  validate({ body: z.object({ activationKey: z.string().trim().min(15).max(100) }).strict() }),
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!env.LICENSE_PUBLIC_KEY_B64) {
+      throw new ApiError(503, 'License verification is not configured on this server', 'LICENSE_NOT_CONFIGURED')
+    }
+    const installationId = await ensureInstallationId()
+    let response: globalThis.Response
+    try {
+      response = await fetch(new URL('/api/public/activate', env.LICENSING_API_URL), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activationKey: req.body.activationKey, installationId }),
+        signal: AbortSignal.timeout(10_000),
+      })
+    } catch {
+      throw new ApiError(503, 'Licensing service is unavailable. Try again when internet access is restored.', 'LICENSING_UNAVAILABLE')
+    }
+
+    if (!response.ok) {
+      if (response.status === 401) throw ApiError.unauthorized('Activation key is invalid', 'LICENSE_KEY_INVALID')
+      if (response.status === 403) throw ApiError.forbidden('This license is expired, suspended or revoked')
+      if (response.status === 409) throw ApiError.conflict('This license is already bound to another installation')
+      if (response.status === 429) throw ApiError.tooManyRequests('Too many activation attempts. Try again later.')
+      throw new ApiError(503, 'Licensing service could not complete activation', 'LICENSING_UNAVAILABLE')
+    }
+
+    const body = await response.json().catch(() => null) as { data?: SignedLicense } | null
+    if (!body?.data) throw ApiError.internal('Licensing service returned an invalid response')
+    const publicKeyPem = Buffer.from(env.LICENSE_PUBLIC_KEY_B64, 'base64').toString('utf8')
+    let claims
+    try {
+      claims = verifySignedLicense(body.data, { publicKeyPem, installationId })
+    } catch {
+      throw ApiError.forbidden('The returned license could not be verified')
+    }
+
+    const keyHash = createHash('sha256').update(req.body.activationKey.replace(/[^a-z0-9]/gi, '').toUpperCase()).digest('hex')
+    await persistSignedLicense(currentUser(req).id, installationId, claims, body.data, keyHash, 'LICENSE_ACTIVATED')
+
+    sendData(res, {
+      installationId,
+      status: claims.plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE',
+      plan: claims.plan,
+      expiresAt: claims.expiresAt,
+      maxCandidates: claims.maxCandidates,
+      features: claims.features,
+    }, 201)
+  }),
+)
+
+licenseRouter.post(
+  '/import',
+  requirePermission(PERMISSIONS.LICENSE_MANAGE),
+  validate({ body: z.object({ signedLicense: z.unknown() }).strict() }),
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!env.LICENSE_PUBLIC_KEY_B64) {
+      throw new ApiError(503, 'License verification is not configured on this server', 'LICENSE_NOT_CONFIGURED')
+    }
+    const installationId = await ensureInstallationId()
+    const signedLicense = req.body.signedLicense as SignedLicense
+    let claims: VerifiedLicense
+    try {
+      claims = verifySignedLicense(signedLicense, {
+        publicKeyPem: Buffer.from(env.LICENSE_PUBLIC_KEY_B64, 'base64').toString('utf8'),
+        installationId,
+      })
+    } catch {
+      throw ApiError.forbidden('The offline license is invalid, expired or belongs to another installation')
+    }
+
+    await persistSignedLicense(currentUser(req).id, installationId, claims, signedLicense, null, 'LICENSE_IMPORTED')
+    sendData(res, {
+      installationId,
+      status: claims.plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE',
+      plan: claims.plan,
+      expiresAt: claims.expiresAt,
+      maxCandidates: claims.maxCandidates,
+      features: claims.features,
+    }, 201)
+  }),
+)
 
 systemRouter.get(
   '/settings',

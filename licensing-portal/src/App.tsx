@@ -1,16 +1,26 @@
 import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import {
   KeyRound,
   LogIn,
   Plus,
   RefreshCw,
+  Pause,
+  Play,
   ShieldCheck,
   Ban,
   Copy,
   LogOut,
 } from "lucide-react";
 
-const API = (import.meta as any).env.VITE_LICENSING_API_URL || "";
+const configuredApiUrl = import.meta.env.VITE_LICENSING_API_URL?.trim();
+const API = configuredApiUrl
+  ? configuredApiUrl.replace(/\/+$/, "")
+  : import.meta.env.DEV
+    ? "http://127.0.0.1:18080"
+    : "";
+const API_CONFIGURATION_ERROR =
+  "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 type Licence = {
   id: string;
   institution_id: string;
@@ -25,17 +35,52 @@ type Licence = {
   activated_at?: string;
   features?: string[];
 };
+type LicenceEvent = {
+  id: string;
+  license_id: string | null;
+  event_type: string;
+  actor_email?: string | null;
+  installation_id?: string | null;
+  created_at: string;
+};
+type AdminAccount = { id: string; email: string; role: string; status: string; created_at: string; last_login_at?: string | null };
 const fmt = (v?: string) =>
   v ? new Date(v).toLocaleDateString() : "No expiry";
+const fmtTimestamp = (v: string) => new Date(v).toLocaleString();
 export default function App() {
   const [token, setToken] = useState(""),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaSecret, setMfaSecret] = useState("");
+  const [mfaSetupCode, setMfaSetupCode] = useState("");
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
+  const [mfaSessionToken, setMfaSessionToken] = useState("");
+  const [mfaChallengeToken, setMfaChallengeToken] = useState("");
+  const [mfaSetupUrl, setMfaSetupUrl] = useState("");
+  const [mfaQrDataUrl, setMfaQrDataUrl] = useState("");
+  const [user, setUser] = useState<{ id: string; email: string; role: string } | null>(null);
+  const [invitationToken, setInvitationToken] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
+  const [bootstrapToken, setBootstrapToken] = useState(() => new URLSearchParams(window.location.search).get("setup") || "");
+  const [authMode, setAuthMode] = useState<"login" | "mfa-login" | "invite" | "bootstrap" | "mfa-setup">(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("setup") ? "bootstrap" : params.has("invite") ? "invite" : "login";
+  });
+  const [bootstrapStatus, setBootstrapStatus] = useState<"checking" | "available" | "closed">("checking");
+  const [registrationEmail, setRegistrationEmail] = useState(() => new URLSearchParams(window.location.search).get("email") || "");
+  const [registrationPassword, setRegistrationPassword] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [items, setItems] = useState<Licence[]>([]),
-    [error, setError] = useState(""),
+    [events, setEvents] = useState<LicenceEvent[]>([]),
+    [admins, setAdmins] = useState<AdminAccount[]>([]),
+    [error, setError] = useState(API ? "" : API_CONFIGURATION_ERROR),
     [busy, setBusy] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
     [issued, setIssued] = useState<any>(null);
+  const [renewing, setRenewing] = useState<Licence | null>(null);
+  const [renewForm, setRenewForm] = useState({ plan: "PROFESSIONAL", maxCandidates: 300, expiresAt: "", features: ["cbt", "question-bank", "results"] });
   const [form, setForm] = useState({
     institutionName: "",
     institutionId: "",
@@ -52,24 +97,75 @@ export default function App() {
       "backup-restore",
     ],
   });
-  async function request(path: string, opts: RequestInit = {}) {
-    const r = await fetch(`${API}${path}`, {
+  async function request(path: string, opts: RequestInit = {}, authToken = token) {
+    if (!API) throw new Error(API_CONFIGURATION_ERROR);
+    const r = await fetch(new URL(path, `${API}/`), {
       ...opts,
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
     });
-    const d = await r.json().catch(() => ({ message: "Unexpected response" }));
-    if (!r.ok) throw new Error(d.message || `Request failed (${r.status})`);
+    const responseText = await r.text();
+    let d: any = null;
+    try {
+      d = JSON.parse(responseText);
+    } catch {
+      // Non-JSON responses are reported below with the request route and status.
+    }
+    if (r.status === 401 && authToken && authToken === token) {
+      setToken("");
+      setUser(null);
+    }
+    const route = path.split("?")[0];
+    if (!r.ok)
+      throw new Error(
+        d?.message ||
+          `Licensing API request to ${route} failed with HTTP ${r.status}. Check the API URL and service deployment.`,
+      );
+    if (d === null)
+      throw new Error(
+        `Licensing API returned a non-JSON response for ${route}. Check that VITE_LICENSING_API_URL points to the licensing service.`,
+      );
     return d;
   }
+  useEffect(() => {
+    if (!bootstrapToken) return;
+    let current = true;
+    setBootstrapStatus("checking");
+    request(`/api/public/bootstrap-status?token=${encodeURIComponent(bootstrapToken)}`)
+      .then((d) => {
+        if (!current) return;
+        setBootstrapStatus(d.available ? "available" : "closed");
+        if (d.available) setRegistrationEmail(d.email);
+      })
+      .catch(() => {
+        if (current) setBootstrapStatus("closed");
+      });
+    return () => { current = false; };
+  }, [bootstrapToken]);
+  useEffect(() => {
+    let current = true;
+    if (!mfaSetupUrl) { setMfaQrDataUrl(""); return; }
+    QRCode.toDataURL(mfaSetupUrl, { errorCorrectionLevel: "M", margin: 2, width: 220 })
+      .then((url) => { if (current) setMfaQrDataUrl(url); })
+      .catch(() => { if (current) setMfaQrDataUrl(""); });
+    return () => { current = false; };
+  }, [mfaSetupUrl]);
   async function load() {
     setBusy(true);
     setError("");
     try {
-      const d = await request("/api/admin/licenses");
-      setItems(d.data || []);
+      const [licences, activity] = await Promise.all([
+        request("/api/admin/licenses"),
+        request("/api/admin/audit?limit=100"),
+      ]);
+      setItems(licences.data || []);
+      setEvents(activity.data || []);
+      if (user?.role === "SUPER_ADMIN") {
+        const accountList = await request("/api/admin/admins");
+        setAdmins(accountList.data || []);
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -77,18 +173,106 @@ export default function App() {
     }
   }
   useEffect(() => {
-    if (token) void load();
-  }, [token]);
+    if (token && authMode !== "mfa-setup") void load();
+  }, [token, authMode]);
   async function login(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     try {
+      const mfaStep = authMode === "mfa-login";
       const d = await request("/api/admin/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(mfaStep
+          ? { email, mfaCode, mfaChallengeToken }
+          : { email, password }),
       });
+      if (d.mfaRequired) {
+        setMfaChallengeToken(d.mfaChallengeToken);
+        setPassword("");
+        setMfaCode("");
+        setAuthMode("mfa-login");
+        return;
+      }
+      if (d.mfaSetupRequired) {
+        setToken(d.setupToken);
+        setUser(d.user);
+        setAuthMode("mfa-setup");
+        const setup = await request("/api/admin/mfa/setup", { method: "POST" }, d.setupToken);
+        setMfaSecret(setup.secret);
+        setMfaSetupUrl(setup.otpauthUrl);
+        setPassword("");
+        setMfaCode("");
+        return;
+      }
       setToken(d.token);
+      setUser(d.user);
       setPassword("");
+      setMfaCode("");
+      setMfaChallengeToken("");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  async function verifyMfaSetup(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      const d = await request("/api/admin/mfa/verify-setup", {
+        method: "POST",
+        body: JSON.stringify({ code: mfaSetupCode }),
+      }, token);
+      setMfaRecoveryCodes(d.recoveryCodes || []);
+      setMfaSessionToken(d.token);
+      setUser(d.user);
+      setMfaSetupCode("");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  async function register(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      if (authMode === "bootstrap") {
+        await request("/api/public/bootstrap", {
+          method: "POST",
+          body: JSON.stringify({ bootstrapToken, password: registrationPassword }),
+        });
+      } else {
+        await request("/api/admin/register", {
+          method: "POST",
+          body: JSON.stringify({ email: registrationEmail, password: registrationPassword, invitationToken }),
+        });
+      }
+      setInvitationToken("");
+      setBootstrapToken("");
+      setRegistrationPassword("");
+      setAuthNotice("Your administrator account is ready. Sign in with your new password.");
+      setAuthMode("login");
+      window.history.replaceState({}, "", window.location.pathname);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  async function createInvitation(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      const d = await request("/api/admin/invitations", { method: "POST", body: JSON.stringify({ email: inviteEmail }) });
+      const link = new URL(window.location.href);
+      link.search = new URLSearchParams({ invite: d.data.token, email: d.data.email }).toString();
+      setInviteLink(link.toString());
+      setInviteEmail("");
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  async function disableAdmin(account: AdminAccount) {
+    if (!confirm(`Disable access for ${account.email}? Their current sessions will stop working immediately.`)) return;
+    try {
+      await request(`/api/admin/admins/${account.id}/disable`, { method: "POST" });
+      await load();
     } catch (e: any) {
       setError(e.message);
     }
@@ -126,6 +310,32 @@ export default function App() {
       setError(e.message);
     }
   }
+  async function setSuspended(licence: Licence) {
+    const suspend = licence.status !== "SUSPENDED";
+    if (suspend && !confirm("Suspend this licence? Online activation will be blocked. Offline installations are affected when they next check in.")) return;
+    try {
+      await request(`/api/admin/licenses/${licence.id}/${suspend ? "suspend" : "resume"}`, { method: "POST" });
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  async function renew(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renewing) return;
+    setError("");
+    try {
+      const d = await request(`/api/admin/licenses/${renewing.id}/renew`, {
+        method: "POST",
+        body: JSON.stringify({ ...renewForm, expiresAt: renewForm.expiresAt || null }),
+      });
+      setIssued(d.data);
+      setRenewing(null);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
   async function offlineIssue(id: string) {
     const installationId = prompt(
       "Enter the Installation ID shown on the school server:",
@@ -141,13 +351,45 @@ export default function App() {
       });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `nurse-cbt-license-${id}.json`;
+      a.download = `platform-cbt-license-${id}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e: any) {
       setError(e.message);
     }
   }
+  if (authMode === "mfa-login" && !token)
+    return (
+      <main className="login">
+        <div className="brand"><div className="logo"><ShieldCheck /></div><p className="eyebrow">ACCOUNT SECURITY</p><h1>Verify it’s you</h1><p className="muted">Enter a current code from your authenticator app or use one recovery code.</p></div>
+        <section className="panel loginpanel"><form className="authfields" onSubmit={login}>
+          <h2>Multi-factor verification</h2><p className="muted">Signing in as {email}</p>
+          <label>Authenticator or recovery code<input type="text" autoComplete="one-time-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} autoFocus required /></label>
+          {error && <p className="error">{error}</p>}<button className="primary"><LogIn size={17} /> Verify and sign in</button>
+          <button type="button" className="secondary" onClick={() => { setAuthMode("login"); setMfaCode(""); setMfaChallengeToken(""); setError(""); }}>Back to email and password</button>
+        </form></section>
+      </main>
+    );
+  if (authMode === "mfa-setup" && token)
+    return (
+      <main className="login">
+        <div className="brand"><div className="logo"><ShieldCheck /></div><p className="eyebrow">ACCOUNT SECURITY</p><h1>Set up authenticator</h1><p className="muted">Multi-factor authentication is required for every licensing administrator.</p></div>
+        <section className="panel loginpanel">
+          {mfaRecoveryCodes.length ? (
+            <div className="authfields"><h2>Save your recovery codes</h2><p className="muted">Store these codes somewhere private. Each code can be used once if you lose access to your authenticator. They will not be shown again.</p><div className="recovery-codes">{mfaRecoveryCodes.map((code) => <code key={code}>{code}</code>)}</div><button className="primary" onClick={() => { setToken(mfaSessionToken); setMfaSessionToken(""); setMfaRecoveryCodes([]); setMfaSecret(""); setAuthMode("login"); }}>I saved these codes</button></div>
+          ) : (
+            <form className="authfields" onSubmit={verifyMfaSetup}>
+              <h2>Connect an authenticator app</h2><p className="muted">Scan this QR code in Google Authenticator, Microsoft Authenticator, or another TOTP app. You can also enter the setup key manually.</p>
+              {mfaQrDataUrl && <img className="mfa-qr" src={mfaQrDataUrl} alt="Authenticator setup QR code" />}
+              <label>Setup key<div className="mfa-secret"><code>{mfaSecret || "Generating…"}</code><button type="button" className="secondary" onClick={() => void navigator.clipboard.writeText(mfaSecret)}>Copy</button></div></label>
+              <p className="hint">Then enter the current six-digit code from the app to confirm setup.</p>
+              <label>Authenticator code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaSetupCode} onChange={(e) => setMfaSetupCode(e.target.value.replace(/\D/g, ""))} required /></label>
+              {error && <p className="error">{error}</p>}<button className="primary" disabled={!mfaSecret}>Enable MFA</button>
+            </form>
+          )}
+        </section>
+      </main>
+    );
   if (!token)
     return (
       <main className="login">
@@ -157,7 +399,7 @@ export default function App() {
           </div>
           <p className="eyebrow">PRODUCT OWNER CONSOLE</p>
           <h1>
-            Nurse CBT
+            The Platform CBT
             <br />
             Licence Manager
           </h1>
@@ -166,8 +408,35 @@ export default function App() {
             entitlements.
           </p>
         </div>
-        <form className="panel loginpanel" onSubmit={login}>
+        <section className="panel loginpanel">
+          {authMode === "bootstrap" ? bootstrapStatus === "checking" ? (
+            <div className="authfields"><h2>Checking setup link</h2><p className="muted">Verifying this one-time super-admin link…</p></div>
+          ) : bootstrapStatus === "closed" ? (
+            <div className="authfields"><h2>Super-admin setup unavailable</h2><p className="muted">This setup link has expired or has already been used.</p><button className="secondary" onClick={() => { setAuthMode("login"); setBootstrapToken(""); window.history.replaceState({}, "", window.location.pathname); }}>Back to sign in</button></div>
+          ) : (
+          <form className="authfields" onSubmit={register}>
+            <h2>One-time super-admin registration</h2>
+            <p className="muted">Create the first and only super-admin account. This setup link can be used once.</p>
+            <label>Email<input type="email" value={registrationEmail} readOnly /></label>
+            <label>Password<input type="password" autoComplete="new-password" minLength={12} value={registrationPassword} onChange={(e) => setRegistrationPassword(e.target.value)} required /></label>
+            {error && <p className="error">{error}</p>}
+            <button className="primary">Create super-admin account</button>
+          </form>
+          ) : authMode === "invite" ? (
+          <form className="authfields" onSubmit={register}>
+            <h2>Register administrator account</h2>
+            <p className="muted">This invitation is for {registrationEmail} and expires after 48 hours.</p>
+            <label>Email<input type="email" autoComplete="username" value={registrationEmail} onChange={(e) => setRegistrationEmail(e.target.value)} required /></label>
+            <label>Password<input type="password" autoComplete="new-password" minLength={12} value={registrationPassword} onChange={(e) => setRegistrationPassword(e.target.value)} required /></label>
+            {error && <p className="error">{error}</p>}
+            <button className="primary">Create administrator account</button>
+            <p className="hint">Choose a unique password with at least 12 characters.</p>
+            <button type="button" className="secondary" onClick={() => { setAuthMode("login"); setInvitationToken(""); window.history.replaceState({}, "", window.location.pathname); }}>Back to sign in</button>
+          </form>
+        ) : (
+        <form className="authfields" onSubmit={login}>
           <h2>Administrator sign in</h2>
+          {authNotice && <p className="hint">{authNotice}</p>}
           <label>
             Email
             <input
@@ -188,15 +457,17 @@ export default function App() {
               required
             />
           </label>
+          <label>Authenticator or recovery code<input type="text" autoComplete="one-time-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="6-digit code or recovery code" /></label>
           {error && <p className="error">{error}</p>}
           <button className="primary">
             <LogIn size={17} /> Sign in securely
           </button>
           <p className="hint">
-            Use the administrator credentials configured on the licensing
-            service. No default account is provided.
+            Administrator accounts are created by the super-admin. Contact your product owner if you need access.
           </p>
         </form>
+        )}
+        </section>
       </main>
     );
   return (
@@ -207,8 +478,8 @@ export default function App() {
             <ShieldCheck />
           </div>
           <div>
-            <b>Nurse CBT</b>
-            <span>Licence Manager</span>
+            <b>CBT Platform</b>
+            <span>Licence Manager · {user?.email}</span>
           </div>
         </div>
         <div className="headeractions">
@@ -219,7 +490,10 @@ export default function App() {
             className="secondary"
             onClick={() => {
               setToken("");
+              setUser(null);
               setItems([]);
+              setEvents([]);
+              setAdmins([]);
             }}
           >
             <LogOut size={16} /> Sign out
@@ -229,9 +503,9 @@ export default function App() {
       <section className="intro">
         <div>
           <p className="eyebrow">CUSTOMER LICENSING</p>
-          <h1>Institution licences</h1>
+          <h1>Licensing dashboard</h1>
           <p className="muted">
-            Create and manage the licences that activate school installations.
+            Manage institution licences, administrator access, activations and recent activity.
           </p>
         </div>
         <button
@@ -264,6 +538,22 @@ export default function App() {
           >
             <Copy size={16} /> Copy key
           </button>
+          {issued.signedLicense && (
+            <button
+              className="secondary"
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(issued.signedLicense, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `platform-cbt-license-${issued.id}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <KeyRound size={16} /> Download signed licence
+            </button>
+          )}
           <button className="close" onClick={() => setIssued(null)}>
             Dismiss
           </button>
@@ -356,6 +646,21 @@ export default function App() {
           </div>
         </form>
       )}
+      {renewing && (
+        <form className="panel formpanel" onSubmit={renew}>
+          <h2>Renew {renewing.institution_name}</h2>
+          <p className="muted">Renewal replaces the current activation key. The new key is shown once.</p>
+          <div className="formgrid">
+            <label>Plan<select value={renewForm.plan} onChange={(e) => setRenewForm({ ...renewForm, plan: e.target.value })}><option>TRIAL</option><option>STANDARD</option><option>PROFESSIONAL</option><option>ENTERPRISE</option></select></label>
+            <label>Candidate limit<input type="number" min="1" max="100000" value={renewForm.maxCandidates} onChange={(e) => setRenewForm({ ...renewForm, maxCandidates: Number(e.target.value) })} required /></label>
+            <label>Expiry date<input type="date" value={renewForm.expiresAt} onChange={(e) => setRenewForm({ ...renewForm, expiresAt: e.target.value })} /></label>
+          </div>
+          <div className="formactions">
+            <button type="button" className="secondary" onClick={() => setRenewing(null)}>Cancel</button>
+            <button className="primary"><RefreshCw size={16} /> Renew licence</button>
+          </div>
+        </form>
+      )}
       <section className="stats">
         <div className="panel">
           <span>Total licences</span>
@@ -416,7 +721,30 @@ export default function App() {
                   <td>{x.installation_id || "Not activated"}</td>
                   <td>
                     <div className="rowactions">
-                      {x.status !== "REVOKED" && (
+                      {!(["REVOKED", "SUSPENDED"].includes(x.status)) && (
+                        <button
+                          className="iconbutton"
+                          title="Renew licence and replace activation key"
+                          onClick={() => {
+                            setRenewForm({ plan: x.plan, maxCandidates: x.max_candidates, expiresAt: x.expires_at ? new Date(x.expires_at).toISOString().slice(0, 10) : "", features: x.features || [] });
+                            setRenewing(x);
+                            setShowForm(false);
+                            setIssued(null);
+                          }}
+                        >
+                          <RefreshCw size={16} />
+                        </button>
+                      )}
+                      {(["PENDING", "ACTIVE", "SUSPENDED"].includes(x.status)) && (
+                        <button
+                          className={`iconbutton${x.status === "SUSPENDED" ? "" : " danger"}`}
+                          title={x.status === "SUSPENDED" ? "Resume licence" : "Suspend licence"}
+                          onClick={() => void setSuspended(x)}
+                        >
+                          {x.status === "SUSPENDED" ? <Play size={16} /> : <Pause size={16} />}
+                        </button>
+                      )}
+                      {!(["REVOKED", "SUSPENDED"].includes(x.status)) && (
                         <button
                           className="iconbutton"
                           title="Issue offline licence file"
@@ -447,6 +775,50 @@ export default function App() {
           )}
         </div>
       </section>
+      <section className="panel tablepanel activitypanel">
+        <div className="tabletitle">
+          <div>
+            <h2>Recent licensing activity</h2>
+            <p className="muted">Latest 100 recorded events</p>
+          </div>
+        </div>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Event</th>
+                <th>Administrator</th>
+                <th>Installation</th>
+                <th>Licence ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => (
+                <tr key={event.id}>
+                  <td>{fmtTimestamp(event.created_at)}</td>
+                  <td>{event.event_type.replace(/_/g, " ")}</td>
+                  <td>{event.actor_email || "School installation"}</td>
+                  <td>{event.installation_id || "—"}</td>
+                  <td>{event.license_id || "Deleted licence"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!events.length && <div className="empty">No licensing activity recorded yet.</div>}
+        </div>
+      </section>
+      {user?.role === "SUPER_ADMIN" && (
+        <section className="panel tablepanel activitypanel">
+          <div className="tabletitle"><div><h2>Administrator access</h2><p className="muted">Invite staff and manage active portal accounts.</p></div></div>
+          <form className="formactions" onSubmit={createInvitation} style={{ justifyContent: "flex-start", marginTop: 16 }}>
+            <input className="adminemail" type="email" aria-label="Administrator email" placeholder="name@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required />
+            <button className="primary">Create 48-hour invitation</button>
+          </form>
+          {inviteLink && <div className="issued"><p className="muted">One-time registration link. Share it securely; it will not be shown again.</p><code>{inviteLink}</code><button className="secondary" onClick={() => navigator.clipboard.writeText(inviteLink)}><Copy size={16} /> Copy invitation link</button><button className="close" onClick={() => setInviteLink("")}>Dismiss</button></div>}
+          <div className="tablewrap"><table><thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Last sign in</th><th>Action</th></tr></thead><tbody>{admins.map((account) => <tr key={account.id}><td>{account.email}</td><td>{account.role.replace("_", " ")}</td><td>{account.status}</td><td>{account.last_login_at ? fmtTimestamp(account.last_login_at) : "Never"}</td><td>{account.status === "ACTIVE" && account.id !== user.id && <button className="iconbutton danger" title={`Disable ${account.email}`} onClick={() => void disableAdmin(account)}><Ban size={16} /></button>}</td></tr>)}</tbody></table></div>
+        </section>
+      )}
       <footer>
         Private product-owner portal · Use HTTPS, strong credentials, and
         restricted access in production.

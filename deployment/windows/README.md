@@ -1,0 +1,61 @@
+# Windows installer build
+
+This directory contains the Windows release staging and Inno Setup project. The installer deploys the CBT student portal at `/`, staff portal at `/admin`, and API at `/api/v1` from one LAN origin. First installation runs the MariaDB installer, creates a local-only database account, applies Prisma migrations, creates the first super-admin, installs the CBT API as a Windows service, and opens TCP 5000 on Domain/Private firewall profiles. MariaDB remains bound to loopback.
+
+## Build prerequisites
+
+Use a clean Windows x64 release machine with Node.js 20.11 or newer, npm, PowerShell, and Inno Setup 6 installed. Obtain the following x64 distribution assets from their official project releases and verify their published signatures or checksums before use:
+
+- Node.js Windows ZIP runtime (not the system installer)
+- MariaDB Server Windows MSI
+- WinSW Windows service wrapper executable (use the .NET Framework build for Windows Server 2016+)
+- The CBT licensing service's base64-encoded Ed25519 **public** key and its production HTTPS API origin
+
+The installer does not contain the licensing private key. Keep the licensing public key and installer inputs in the release pipeline; do not put customer secrets in the payload.
+
+## Stage a release
+
+From the repository root, use a new semantic version for each release:
+
+```powershell
+.
+deployment\windows\build-release.ps1 `
+  -Version 1.0.0 `
+  -NodeRuntimeZip C:\release-inputs\node-v22-win-x64.zip `
+  -MariaDbMsi C:\release-inputs\mariadb-winx64.msi `
+  -WinSwExe C:\release-inputs\WinSW.NET461.exe `
+  -LicensingApiUrl https://licenses.your-domain.example `
+  -LicensePublicKeyB64 $env:CBT_LICENSE_PUBLIC_KEY_B64
+```
+
+The script builds both browser apps and the API, packages production server dependencies and Prisma migrations, and writes SHA-256 checksums under `deployment/windows/build/<version>/`. `VITE_BASE_PATH=/admin/` is applied to the staff portal build. Use an unused version directory; the script deliberately refuses to overwrite an existing release.
+
+Compile `deployment/windows/CBT-Platform.iss` using Inno Setup Compiler with `CBT_RELEASE_VERSION` set to the staged version, for example:
+
+```powershell
+$env:CBT_RELEASE_VERSION = '1.0.0'
+& '$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe' deployment\windows\CBT-Platform.iss
+```
+
+The output is `deployment/windows/build/<version>/The-Platform-CBT-Setup-<version>-unsigned.exe`. The current project does not include a code-signing certificate; sign the executable with the company Authenticode certificate and timestamp service before sending it to schools. Never distribute the `-unsigned.exe` as a production release.
+
+## First installation
+
+Run the setup as a Windows administrator. The bundled MariaDB MSI opens its setup UI. Install its database instance as a service named **MariaDB**, use port **3306**, and set a strong root password. Return to the CBT setup window; its PowerShell provisioning step securely prompts for the MariaDB root password, then asks for the first staff email/name and a unique password of at least 12 characters. Passwords are passed through standard input and saved credentials are restricted to Administrators, SYSTEM, and the LocalService account.
+
+After installation:
+
+- Staff sign in at `http://<server-LAN-address>:5000/admin/login`.
+- Students use `http://<server-LAN-address>:5000/`.
+- MariaDB port 3306 is not opened on the LAN. The installer adds an inbound rule for CBT port 5000 only on Domain and Private profiles.
+- Configuration, uploads, logs, and backups live under `%ProgramData%\The Platform CBT`.
+
+## Upgrade and uninstall
+
+Before overwriting an existing installation, the installer stops the CBT service, runs `mariadb-dump`, verifies a non-empty SQL backup, and writes a SHA-256 sidecar in `%ProgramData%\The Platform CBT\backups`. If the backup fails, setup aborts before replacing application files. It then applies pending Prisma migrations and restarts the service. Keep the last known-good installer and verified database backup for manual rollback; the installer does not automatically reverse a database migration.
+
+Uninstall removes the CBT Windows service and the port 5000 firewall rule. It deliberately retains MariaDB, its database, `%ProgramData%` configuration, uploads, and backups. Purge retained data only after an operator has exported the school's records and explicitly approved removal.
+
+## Release validation still required
+
+This is an unsigned installer build pipeline, not yet a commercial release certification. Before client delivery, build it on the release machine, verify all third-party asset checksums and license notices, test clean installation/reboot/service recovery on a clean Windows Server VM, join a second machine to the school LAN and test both portals, test an upgrade with real data and restore the generated backup, test uninstall retention, and sign/timestamp the final installer. The Prisma schema and installer have not been exercised together on a clean Windows VM in this repository session.
