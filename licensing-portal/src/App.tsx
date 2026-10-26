@@ -351,7 +351,7 @@ export default function App() {
       });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `nurse-cbt-license-${id}.json`;
+      a.download = `platform-cbt-license-${id}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e: any) {
@@ -546,7 +546,7 @@ export default function App() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `nurse-cbt-license-${issued.id}.json`;
+                a.download = `platform-cbt-license-${issued.id}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}
