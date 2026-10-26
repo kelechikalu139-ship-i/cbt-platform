@@ -57,52 +57,65 @@ export function createApp(): Application {
   )
 
   // --- CORS --------------------------------------------------------------
-  // Only the listed origins may call the API from a browser (§19). This is
-  // the admin app's dev server during development and the LAN address in
-  // production.
+  // Cross-origin browser requests are limited to the configured allow-list
+  // (§19). The locally hosted portals also need same-origin requests to work
+  // when staff access the server by a LAN hostname or alternate interface IP.
   //
   // In development the Vite dev server runs on an ephemeral port
   // (`strictPort: false`), so the exact origin cannot be predicted. Any
   // loopback origin (localhost / 127.0.0.1 / ::1, any port) is therefore
   // accepted. This loosens nothing in production: `isProduction` keeps the
   // strict, configured list on a real deployment.
-  app.use(
-    cors({
-      origin(origin, callback) {
-        // Same-origin requests and non-browser clients (the student app served
-        // from this same host, curl, the Windows service) send no Origin header.
-        if (!origin) {
-          callback(null, true)
-          return
-        }
+  const corsMiddleware = cors({
+    origin(origin, callback) {
+      // Non-browser clients (curl, the Windows service) send no Origin header.
+      if (!origin) {
+        callback(null, true)
+        return
+      }
 
-        if (env.CORS_ORIGIN.includes(origin)) {
-          callback(null, true)
-          return
-        }
+      if (env.CORS_ORIGIN.includes(origin)) {
+        callback(null, true)
+        return
+      }
 
-        // Development only: any loopback origin, on any port.
-        if (!isProduction) {
-          try {
-            const { hostname } = new URL(origin)
-            if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-              callback(null, true)
-              return
-            }
-          } catch {
-            // Malformed origin — fall through to the rejection below.
+      // Development only: any loopback origin, on any port.
+      if (!isProduction) {
+        try {
+          const { hostname } = new URL(origin)
+          if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+            callback(null, true)
+            return
           }
+        } catch {
+          // Malformed origin — fall through to the rejection below.
         }
+      }
 
-        callback(new Error('Origin not permitted by CORS policy'))
-      },
-      credentials: false,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
-      exposedHeaders: ['Retry-After'],
-      maxAge: 600,
-    }),
-  )
+      callback(new Error('Origin not permitted by CORS policy'))
+    },
+    credentials: false,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+    exposedHeaders: ['Retry-After'],
+    maxAge: 600,
+  })
+  app.use((req, res, next) => {
+    const origin = req.get('origin')
+    const host = req.get('host')
+    if (origin && host) {
+      try {
+        const requestOrigin = new URL(`${req.protocol}://${host}`).origin
+        if (new URL(origin).origin === origin && origin === requestOrigin) {
+          next()
+          return
+        }
+      } catch {
+        // Let the CORS policy reject malformed origins.
+      }
+    }
+    corsMiddleware(req, res, next)
+  })
 
   // --- Request identity --------------------------------------------------
   // Correlates every log line and error response to one request, which is what

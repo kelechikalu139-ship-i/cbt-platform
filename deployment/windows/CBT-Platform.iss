@@ -17,8 +17,8 @@ DefaultDirName={autopf}\The Platform CBT
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -47,7 +47,7 @@ Name: "{group}\Student portal"; Filename: "http://localhost:5000/"
 Name: "{autodesktop}\The Platform CBT - Staff"; Filename: "http://localhost:5000/admin/login"; Tasks: desktopicon
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup\Uninstall-CBT.ps1"""; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup\Uninstall-CBT.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveCBTService"
 
 [Code]
 function MariaDbServiceExists(): Boolean;

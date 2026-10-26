@@ -4,11 +4,27 @@ param(
   [Parameter(Mandatory)] [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })] [string] $NodeRuntimeZip,
   [Parameter(Mandatory)] [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })] [string] $MariaDbMsi,
   [Parameter(Mandatory)] [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })] [string] $WinSwExe,
+  [Parameter(Mandatory)] [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })] [string] $WinSwLicense,
+  [Parameter(Mandatory)] [ValidatePattern('^[A-Fa-f0-9]{64}$')] [string] $NodeRuntimeSha256,
+  [Parameter(Mandatory)] [ValidatePattern('^[A-Fa-f0-9]{64}$')] [string] $MariaDbSha256,
+  [Parameter(Mandatory)] [ValidatePattern('^[A-Fa-f0-9]{64}$')] [string] $WinSwSha256,
   [Parameter(Mandatory)] [string] $LicensingApiUrl,
   [Parameter(Mandatory)] [string] $LicensePublicKeyB64
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Assert-InputHash([string] $Path, [string] $Expected, [string] $Name) {
+  $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+  if (-not $actual.Equals($Expected, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "$Name SHA-256 does not match the value supplied for this release."
+  }
+}
+
+Assert-InputHash $NodeRuntimeZip $NodeRuntimeSha256 'Node runtime'
+Assert-InputHash $MariaDbMsi $MariaDbSha256 'MariaDB installer'
+Assert-InputHash $WinSwExe $WinSwSha256 'WinSW service wrapper'
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $buildRoot = Join-Path $PSScriptRoot 'build'
 $releaseRoot = Join-Path $buildRoot $Version
@@ -109,6 +125,7 @@ New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
 Copy-Item -LiteralPath $nodeExe.Directory.FullName -Destination (Join-Path $runtimeDir 'node') -Recurse
 Copy-Item -LiteralPath (Resolve-Path $MariaDbMsi) -Destination (Join-Path $prerequisitesRoot 'mariadb.msi')
 Copy-Item -LiteralPath (Resolve-Path $WinSwExe) -Destination (Join-Path $toolsRoot 'cbt-service.exe')
+Copy-Item -LiteralPath (Resolve-Path $WinSwLicense) -Destination (Join-Path $toolsRoot 'WinSW-LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Install-CBT.ps1') -Destination (Join-Path $setupRoot 'Install-CBT.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Prepare-Upgrade.ps1') -Destination (Join-Path $setupRoot 'Prepare-Upgrade.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall-CBT.ps1') -Destination (Join-Path $setupRoot 'Uninstall-CBT.ps1')

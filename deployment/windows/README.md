@@ -8,7 +8,7 @@ Use a clean Windows x64 release machine with Node.js 20.11 or newer, npm, PowerS
 
 - Node.js Windows ZIP runtime (not the system installer)
 - MariaDB Server Windows MSI
-- WinSW Windows service wrapper executable (use the .NET Framework build for Windows Server 2016+)
+- WinSW v2.12.0 Windows service wrapper executable and its `LICENSE.txt` (use the .NET Framework build for Windows Server 2016+)
 - The CBT licensing service's base64-encoded Ed25519 **public** key and its production HTTPS API origin
 
 The installer does not contain the licensing private key. Keep the licensing public key and installer inputs in the release pipeline; do not put customer secrets in the payload.
@@ -21,20 +21,24 @@ From the repository root, use a new semantic version for each release:
 .
 deployment\windows\build-release.ps1 `
   -Version 1.0.0 `
-  -NodeRuntimeZip C:\release-inputs\node-v22-win-x64.zip `
-  -MariaDbMsi C:\release-inputs\mariadb-winx64.msi `
+  -NodeRuntimeZip deployment\windows\vendor\node-v24.22.1-win-x64.zip `
+  -MariaDbMsi deployment\windows\vendor\mariadb-11.8.9-winx64.msi `
   -WinSwExe C:\release-inputs\WinSW.NET461.exe `
+  -WinSwLicense C:\release-inputs\WinSW-LICENSE.txt `
+  -NodeRuntimeSha256 d2046d28c2c3dcd211ac5145c0bf30e2047ef9dfb306693c8c6e2eccd8b95fa5 `
+  -MariaDbSha256 372822572baa7f429b9068d583336a9e46b109c12bb0b24eb66dbeb6ad0a563e `
+  -WinSwSha256 b5066b7bbdfba1293e5d15cda3caaea88fbeab35bd5b38c41c913d492aadfc4f `
   -LicensingApiUrl https://licenses.your-domain.example `
   -LicensePublicKeyB64 $env:CBT_LICENSE_PUBLIC_KEY_B64
 ```
 
-The script builds both browser apps and the API, packages production server dependencies and Prisma migrations, and writes SHA-256 checksums under `deployment/windows/build/<version>/`. `VITE_BASE_PATH=/admin/` is applied to the staff portal build. Use an unused version directory; the script deliberately refuses to overwrite an existing release.
+The hashes above pin Node.js v24.22.1 and MariaDB 11.8.9 to their official release metadata, and WinSW v2.12.0 to its official `WinSW.NET461.exe` release asset. The build stops if any binary differs from the pinned value. Use the WinSW binary and license from the same upstream release. The script builds both browser apps and the API, packages production server dependencies and Prisma migrations, and writes a payload checksum manifest under `deployment/windows/build/<version>/`. `VITE_BASE_PATH=/admin/` is applied to the staff portal build. Use an unused version directory; the script deliberately refuses to overwrite an existing release.
 
 Compile `deployment/windows/CBT-Platform.iss` using Inno Setup Compiler with `CBT_RELEASE_VERSION` set to the staged version, for example:
 
 ```powershell
 $env:CBT_RELEASE_VERSION = '1.0.0'
-& '$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe' deployment\windows\CBT-Platform.iss
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" deployment\windows\CBT-Platform.iss
 ```
 
 The output is `deployment/windows/build/<version>/The-Platform-CBT-Setup-<version>-unsigned.exe`. The current project does not include a code-signing certificate; sign the executable with the company Authenticode certificate and timestamp service before sending it to schools. Never distribute the `-unsigned.exe` as a production release.
@@ -48,6 +52,7 @@ After installation:
 - Staff sign in at `http://<server-LAN-address>:5000/admin/login`.
 - Students use `http://<server-LAN-address>:5000/`.
 - MariaDB port 3306 is not opened on the LAN. The installer adds an inbound rule for CBT port 5000 only on Domain and Private profiles.
+- Same-origin browser requests work through the server's LAN IP or hostname; cross-origin requests remain restricted to the configured CORS allow-list.
 - Configuration, uploads, logs, and backups live under `%ProgramData%\The Platform CBT`.
 
 ## Upgrade and uninstall

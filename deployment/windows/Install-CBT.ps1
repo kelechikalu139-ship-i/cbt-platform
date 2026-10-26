@@ -210,8 +210,8 @@ if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeM
     }
     $service = Get-Service CBTPlatform -ErrorAction SilentlyContinue
     if ($service -and $service.Status -ne 'Stopped') { Stop-Service CBTPlatform -Force }
-    $migration = Start-Process -FilePath $nodeExe -ArgumentList @((Join-Path $serverRoot 'node_modules\prisma\build\index.js'), 'migrate', 'deploy', '--config', (Join-Path $serverRoot 'prisma.config.ts')) -WorkingDirectory $dataRoot -Wait -PassThru -NoNewWindow
-    if ($migration.ExitCode -ne 0) { throw "Database migration failed with exit code $($migration.ExitCode)." }
+    & $nodeExe (Join-Path $serverRoot 'node_modules\prisma\build\index.js') migrate deploy --config (Join-Path $serverRoot 'prisma.config.ts')
+    if ($LASTEXITCODE -ne 0) { throw "Database migration failed with exit code $LASTEXITCODE." }
     Install-CbtService
   } catch {
     if (Get-Service CBTPlatform -ErrorAction SilentlyContinue) { Start-Service CBTPlatform -ErrorAction SilentlyContinue }
