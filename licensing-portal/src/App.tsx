@@ -519,6 +519,16 @@ export default function App() {
             Manage institution licences, administrator access, activations and recent activity.
           </p>
         </div>
+        {installerDownloadUrl && (
+          <button
+            className="secondary"
+            onClick={() =>
+              window.open(installerDownloadUrl, "_blank", "noopener,noreferrer")
+            }
+          >
+            <Download size={16} /> Download CBT installer
+          </button>
+        )}
         <button
           className="primary"
           onClick={() => {
@@ -549,22 +559,6 @@ export default function App() {
           >
             <Copy size={16} /> Copy key
           </button>
-          {installerDownloadUrl ? (
-            <button
-              className="secondary"
-              onClick={() =>
-                window.open(installerDownloadUrl, "_blank", "noopener,noreferrer")
-              }
-            >
-              <Download size={16} /> Download CBT installer
-            </button>
-          ) : (
-            <p className="muted">
-              Installer download is unavailable. Set
-              VITE_CBT_INSTALLER_URL to an HTTPS installer URL in the Render
-              Static Site build environment, then redeploy the portal.
-            </p>
-          )}
           {issued.signedLicense && (
             <button
               className="secondary"
