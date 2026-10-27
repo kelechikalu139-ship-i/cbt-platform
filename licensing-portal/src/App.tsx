@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Ban,
   Copy,
+  Download,
   LogOut,
 } from "lucide-react";
 
@@ -21,6 +22,16 @@ const API = configuredApiUrl
     : "";
 const API_CONFIGURATION_ERROR =
   "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
+const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
+const installerDownloadUrl = (() => {
+  if (!configuredInstallerUrl) return null;
+  try {
+    const url = new URL(configuredInstallerUrl);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+})();
 type Licence = {
   id: string;
   institution_id: string;
@@ -538,6 +549,22 @@ export default function App() {
           >
             <Copy size={16} /> Copy key
           </button>
+          {installerDownloadUrl ? (
+            <button
+              className="secondary"
+              onClick={() =>
+                window.open(installerDownloadUrl, "_blank", "noopener,noreferrer")
+              }
+            >
+              <Download size={16} /> Download CBT installer
+            </button>
+          ) : (
+            <p className="muted">
+              Installer download is unavailable. Set
+              VITE_CBT_INSTALLER_URL to an HTTPS installer URL in the Render
+              Static Site build environment, then redeploy the portal.
+            </p>
+          )}
           {issued.signedLicense && (
             <button
               className="secondary"

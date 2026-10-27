@@ -49,6 +49,8 @@ Follow [the Render and Neon deployment guide](../docs/RENDER_NEON_DEPLOYMENT.md)
 
 ## CBT client installation
 
-The portal issues activation credentials. A Windows installer build project now exists under `deployment/windows`, but a signed and production-validated `.exe` is not available for clients to download yet.
+The portal issues activation credentials. Host the installer at a stable HTTPS URL, set `VITE_CBT_INSTALLER_URL` to that URL in the Render Static Site's build environment, and redeploy. When issuing a licence, administrators can download the installer from the confirmation panel and send it to the customer through an approved channel with the activation key. The URL is embedded in the public frontend build, so it must not contain credentials or be treated as an access-control mechanism.
+
+The download button is not shown for a missing or non-HTTPS URL. Render Static Sites serve files from the published build output; they do not have a manual file-upload area, and the 146 MB installer must not be committed as a regular Git file. For a test download, upload the unsigned installer to an HTTPS file host such as a public object-storage bucket, then set the Render build variable to its direct download URL. Clearly keep that test build for internal testing only. Do not send it to clients. A signed, clean-install-validated client release is not available yet.
 
 The portal only accepts the API origin configured in `PORTAL_ORIGIN`; keep the portal and API origins aligned. Development defaults to `http://127.0.0.1:18080` for the API. Restart Vite after changing environment configuration. For a production build, set `VITE_LICENSING_API_URL` to the public HTTPS API origin before running `npm run build`.
