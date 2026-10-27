@@ -16,15 +16,17 @@ const serverRoot = path.join(installRoot, 'server')
 const nodePath = path.join(installRoot, 'runtime', 'node', 'node.exe')
 const prismaCli = path.join(serverRoot, 'node_modules', 'prisma', 'build', 'index.js')
 const configPath = path.join(serverRoot, 'prisma.config.ts')
+const databasePort = Number(input.databasePort)
 
 if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(input.adminEmail)) throw new Error('Administrator email is invalid')
 if (typeof input.adminPassword !== 'string' || input.adminPassword.length < 12) throw new Error('Administrator password must contain at least 12 characters')
 if (!/^[a-f0-9]{64}$/i.test(input.databasePassword)) throw new Error('Generated database password is invalid')
+if (!Number.isInteger(databasePort) || databasePort < 1 || databasePort > 65535) throw new Error('Database port is invalid')
 
 let connection
 try {
   connection = await createConnection({
-    host: '127.0.0.1', port: 3306, user: 'root', password: input.databaseRootPassword,
+    host: '127.0.0.1', port: databasePort, user: 'root', password: input.databaseRootPassword,
     connectTimeout: 10000, multipleStatements: false,
   })
   const [database] = await connection.query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='cbt_system'")
@@ -34,7 +36,7 @@ try {
     if (tables.length) {
       if (!existingAppUser.length) throw new Error('The cbt_system database already contains data; refusing to install over it')
       const appConnection = await createConnection({
-        host: '127.0.0.1', port: 3306, user: 'cbt_app', password: input.databasePassword,
+        host: '127.0.0.1', port: databasePort, user: 'cbt_app', password: input.databasePassword,
         database: 'cbt_system', connectTimeout: 10000,
       })
       try {
@@ -48,7 +50,7 @@ try {
 
   if (existingAppUser.length) {
     const appConnection = await createConnection({
-      host: '127.0.0.1', port: 3306, user: 'cbt_app', password: input.databasePassword,
+      host: '127.0.0.1', port: databasePort, user: 'cbt_app', password: input.databasePassword,
       database: 'cbt_system', connectTimeout: 10000,
     })
     await appConnection.end()

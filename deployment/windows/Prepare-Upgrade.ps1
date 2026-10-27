@@ -20,9 +20,15 @@ $dbPort = $Matches[4]
 $dbName = [Uri]::UnescapeDataString($Matches[5])
 if ($dbHost -notin @('127.0.0.1', 'localhost') -or $dbName -ne 'cbt_system') { throw 'Upgrade backup only supports the local cbt_system database.' }
 
-$dump = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'MariaDB*') -Filter 'mariadb-dump.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $dump) { $dump = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'MariaDB*') -Filter 'mysqldump.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
-if (-not $dump) { throw 'MariaDB dump utility was not found; refusing to upgrade without a backup.' }
+$databaseServiceName = if ($dbPort -eq '3306') { 'MariaDB' } elseif ([int]$dbPort -ge 3307 -and [int]$dbPort -le 3399) { 'CBTPlatformMariaDB' } else { throw "Unsupported local MariaDB port $dbPort; refusing to upgrade without a verified backup." }
+$databaseService = Get-CimInstance -ClassName Win32_Service -Filter "Name='$databaseServiceName'" -ErrorAction SilentlyContinue
+if (-not $databaseService) { throw "MariaDB service '$databaseServiceName' was not found; refusing to upgrade without a verified backup." }
+$exeMatch = [regex]::Match($databaseService.PathName, '^\s*(?:"(?<exe>[^"]+\.exe)"|(?<exe>\S+\.exe))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+if (-not $exeMatch.Success) { throw "Could not read the $databaseServiceName executable path; refusing to upgrade without a verified backup." }
+$binDirectory = Split-Path -Parent $exeMatch.Groups['exe'].Value
+$dumpPath = Join-Path $binDirectory 'mariadb-dump.exe'
+if (-not (Test-Path -LiteralPath $dumpPath -PathType Leaf)) { $dumpPath = Join-Path $binDirectory 'mysqldump.exe' }
+if (-not (Test-Path -LiteralPath $dumpPath -PathType Leaf)) { throw "MariaDB dump utility was not found beside '$databaseServiceName'; refusing to upgrade without a backup." }
 
 if ($service.Status -ne 'Stopped') {
   Stop-Service CBTPlatform -Force
@@ -39,7 +45,7 @@ $cnf = "[client]`r`nuser=$dbUser`r`npassword=`"$dbPassword`"`r`nhost=$dbHost`r`n
 & icacls.exe $defaultsFile /inheritance:r /grant:r 'SYSTEM:F' 'BUILTIN\Administrators:F' 'NT AUTHORITY\LOCAL SERVICE:R' | Out-Null
 if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $defaultsFile -Force; throw 'Could not secure temporary backup credentials.' }
 try {
-  & $dump.FullName "--defaults-extra-file=$defaultsFile" '--single-transaction' '--routines' '--events' "--result-file=$backupFile" $dbName
+  & $dumpPath "--defaults-extra-file=$defaultsFile" '--single-transaction' '--routines' '--events' "--result-file=$backupFile" $dbName
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $backupFile) -or (Get-Item -LiteralPath $backupFile).Length -lt 100) {
     throw 'MariaDB backup failed or produced an empty file; the upgrade was stopped.'
   }

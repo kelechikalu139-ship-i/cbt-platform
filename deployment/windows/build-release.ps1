@@ -132,6 +132,8 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall-CBT.ps1') -Destinatio
 
 $values = [ordered]@{
   version = $Version
+  databasePort = 3307
+  databaseServiceName = 'CBTPlatformMariaDB'
   licensingApiUrl = $LicensingApiUrl.TrimEnd('/')
   licensePublicKeyB64 = $LicensePublicKeyB64
 }

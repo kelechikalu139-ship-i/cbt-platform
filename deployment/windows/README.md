@@ -45,19 +45,19 @@ The output is `deployment/windows/build/<version>/The-Platform-CBT-Setup-<versio
 
 ## First installation
 
-Run the setup as a Windows administrator. The bundled MariaDB MSI opens its setup UI. Install its database instance as a service named **MariaDB**, use port **3306**, and set a strong root password. Return to the CBT setup window; its PowerShell provisioning step securely prompts for the MariaDB root password, then asks for the first staff email/name and a unique password of at least 12 characters. Passwords are passed through standard input and saved credentials are restricted to Administrators, SYSTEM, and the LocalService account.
+Run the setup as a Windows administrator. The installer selects and records a free local TCP port from **3307–3399**. If no MariaDB Windows service exists, the bundled MariaDB MSI opens its setup UI; keep the instance service name **CBTPlatformMariaDB** and the selected port, and set a strong root password. If exactly one compatible MariaDB service already exists, the installer uses its MariaDB instance utility to create a separate `CBTPlatformMariaDB` service and data directory on the selected port; it does not rerun or modify the existing service. If the existing database layout is ambiguous or unsupported, setup stops rather than guessing. This keeps the CBT database separate from existing MariaDB or Docker databases (including Docker's common host port 3306). The provisioning step securely prompts for the CBT database root password, then asks for the first staff email/name and a unique password of at least 12 characters. Credentials are passed to the bootstrap process through standard input and saved configuration is restricted to Administrators, SYSTEM, and the relevant service accounts. Provisioning failures are written to `%ProgramData%\The Platform CBT\logs\installer-provisioning.log`.
 
 After installation:
 
 - Staff sign in at `http://<server-LAN-address>:5000/admin/login`.
 - Students use `http://<server-LAN-address>:5000/`.
-- MariaDB port 3306 is not opened on the LAN. The installer adds an inbound rule for CBT port 5000 only on Domain and Private profiles.
+- CBT's MariaDB service listens only on `127.0.0.1` at the selected port; the database port is not opened on the LAN. The installer adds an inbound rule for CBT port 5000 only on Domain and Private profiles.
 - Same-origin browser requests work through the server's LAN IP or hostname; cross-origin requests remain restricted to the configured CORS allow-list.
 - Configuration, uploads, logs, and backups live under `%ProgramData%\The Platform CBT`.
 
 ## Upgrade and uninstall
 
-Before overwriting an existing installation, the installer stops the CBT service, runs `mariadb-dump`, verifies a non-empty SQL backup, and writes a SHA-256 sidecar in `%ProgramData%\The Platform CBT\backups`. If the backup fails, setup aborts before replacing application files. It then applies pending Prisma migrations and restarts the service. Keep the last known-good installer and verified database backup for manual rollback; the installer does not automatically reverse a database migration.
+Before overwriting an existing installation, the installer stops the CBT service, runs `mariadb-dump`, verifies a non-empty SQL backup, and writes a SHA-256 sidecar in `%ProgramData%\The Platform CBT\backups`. If the backup fails, setup aborts before replacing application files. It then applies pending Prisma migrations and restarts the service. Upgrades preserve the existing `DATABASE_URL` and MariaDB service, including legacy installs using port 3306; they do not move or reconfigure databases. Keep the last known-good installer and verified database backup for manual rollback; the installer does not automatically reverse a database migration.
 
 Uninstall removes the CBT Windows service and the port 5000 firewall rule. It deliberately retains MariaDB, its database, `%ProgramData%` configuration, uploads, and backups. Purge retained data only after an operator has exported the school's records and explicitly approved removal.
 

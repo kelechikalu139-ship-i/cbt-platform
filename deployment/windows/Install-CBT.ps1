@@ -1,5 +1,9 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string] $InstallRoot)
+param(
+  [Parameter(Mandatory)][string] $InstallRoot,
+  [ValidateRange(0, 65535)][int] $DatabasePort = 0,
+  [switch] $UseExistingMariaDbRuntime
+)
 
 $ErrorActionPreference = 'Stop'
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
@@ -10,6 +14,11 @@ $serverRoot = Join-Path $InstallRoot 'server'
 $nodeExe = Join-Path $InstallRoot 'runtime\node\node.exe'
 $winSw = Join-Path $InstallRoot 'tools\cbt-service.exe'
 $deployment = Get-Content (Join-Path $InstallRoot 'setup\deployment-values.json') -Raw | ConvertFrom-Json
+$databasePort = if ($DatabasePort -gt 0) { $DatabasePort } else { [int]$deployment.databasePort }
+$databaseServiceName = [string]$deployment.databaseServiceName
+if (($databasePort -lt 3307 -or $databasePort -gt 3399) -or $databaseServiceName -ne 'CBTPlatformMariaDB') {
+  throw 'The installer database settings are invalid or unsupported.'
+}
 
 function Set-RestrictedAcl([string] $Path, [string] $ServicePermission) {
   $isDirectory = (Get-Item -LiteralPath $Path).PSIsContainer
@@ -54,7 +63,7 @@ function Write-InstallationConfig {
     'HOST=0.0.0.0',
     'APP_NAME="The Platform CBT"',
     "APP_VERSION=$($deployment.version)",
-    "DATABASE_URL=`"mysql://cbt_app:$dbPassword@127.0.0.1:3306/cbt_system`"",
+    "DATABASE_URL=`"mysql://cbt_app:$dbPassword@127.0.0.1:$databasePort/cbt_system`"",
     'DATABASE_POOL_SIZE=10',
     'DATABASE_CONNECT_TIMEOUT_MS=10000',
     "LICENSING_API_URL=$($deployment.licensingApiUrl)",
@@ -81,35 +90,121 @@ function Write-InstallationConfig {
   return $dbPassword
 }
 
-function Set-MariaDbLoopback {
-  $serviceQuery = (& sc.exe qc MariaDB 2>&1 | Out-String)
+function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
+  $serviceQuery = (& sc.exe qc $ServiceName 2>&1 | Out-String)
   if ($LASTEXITCODE -ne 0) { throw 'The MariaDB service was not found. Install MariaDB before continuing.' }
   $imageMatch = [regex]::Match($serviceQuery, '(?im)BINARY_PATH_NAME:\s*(.+)$')
-  $iniPath = $null
-  if ($imageMatch.Success) {
-    $defaultsMatch = [regex]::Match($imageMatch.Groups[1].Value, '--defaults-file=(?:"([^"]+)"|(\S+))')
-    if ($defaultsMatch.Success) { $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value } }
+  if (-not $imageMatch.Success) { throw "Could not read the $ServiceName service executable path." }
+  $defaultsMatch = [regex]::Match($imageMatch.Groups[1].Value, '--defaults-file=(?:"([^"]+)"|(\S+))')
+  if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
+  $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value }
+  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file for $ServiceName." }
+  $databaseDataRoot = Join-Path $dataRoot 'database'
+  if ([IO.Path]::GetFullPath($iniPath) -ine [IO.Path]::GetFullPath((Join-Path $databaseDataRoot 'my.ini'))) {
+    throw "The $ServiceName service does not use the dedicated CBT database directory. Setup will not modify its configuration."
   }
-  if (-not $iniPath -or -not (Test-Path -LiteralPath $iniPath)) {
-    $ini = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'MariaDB*') -Filter 'my.ini' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($ini) { $iniPath = $ini.FullName }
+  $serviceInfo = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+  $serviceAccount = [string]$serviceInfo.StartName
+  if ($serviceAccount -and $serviceAccount -notin @('LocalSystem', 'NT AUTHORITY\SYSTEM')) {
+    & icacls.exe $dataRoot /grant:r "${serviceAccount}:(RX)" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not grant the dedicated MariaDB service access to its configuration directory.' }
+    & icacls.exe $databaseDataRoot /grant:r "${serviceAccount}:(OI)(CI)M" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not grant the dedicated MariaDB service access to its data directory.' }
   }
-  if (-not $iniPath) { throw 'Could not find the MariaDB my.ini file to restrict the database listener to this computer.' }
 
   $content = [IO.File]::ReadAllText($iniPath)
   if ($content -match '(?im)^\s*\[mysqld\]\s*$') {
     $section = [regex]::Match($content, '(?ims)^\[mysqld\]\s*$(.*?)(?=^\[|\z)')
-    if ($section.Success -and $section.Groups[1].Value -match '(?im)^\s*bind-address\s*=') {
-      $start = $section.Groups[1].Index
-      $body = [regex]::Replace($section.Groups[1].Value, '(?im)^\s*bind-address\s*=.*$', 'bind-address=127.0.0.1')
-      $content = $content.Substring(0, $start) + $body + $content.Substring($start + $section.Groups[1].Length)
-    } else {
-      $content = [regex]::Replace($content, '(?im)^\[mysqld\]\s*$', "`$0`r`nbind-address=127.0.0.1", 1)
+    if (-not $section.Success) { throw "Could not parse the [mysqld] section in $iniPath." }
+    $start = $section.Groups[1].Index
+    $body = "`r`n" + $section.Groups[1].Value
+    foreach ($setting in @(@('bind-address', '127.0.0.1'), @('port', [string]$Port), @('skip-networking', '0'))) {
+      $pattern = if ($setting[0] -eq 'skip-networking') {
+        '(?im)^[ \t]*skip-networking(?:[ \t]*=.*)?$'
+      } else {
+        '(?im)^[ \t]*' + [regex]::Escape($setting[0]) + '[ \t]*=.*$'
+      }
+      if ([regex]::IsMatch($body, $pattern)) {
+        $body = [regex]::Replace($body, $pattern, "$($setting[0])=$($setting[1])")
+      } else {
+        $body += "`r`n$($setting[0])=$($setting[1])"
+      }
     }
-  } else { $content += "`r`n[mysqld]`r`nbind-address=127.0.0.1`r`n" }
+    $content = $content.Substring(0, $start) + $body + $content.Substring($start + $section.Groups[1].Length)
+  } else { $content += "`r`n[mysqld]`r`nbind-address=127.0.0.1`r`nport=$Port`r`nskip-networking=0`r`n" }
   [IO.File]::WriteAllText($iniPath, $content, [Text.UTF8Encoding]::new($false))
-  Restart-Service -Name MariaDB -Force
-  (Get-Service MariaDB).WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
+  $service = Get-Service -Name $ServiceName -ErrorAction Stop
+  if ($service.Status -ne 'Stopped') { Stop-Service -Name $ServiceName -Force }
+  Start-Service -Name $ServiceName
+  (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
+}
+
+function Get-MariaDbPort([string] $ServiceName) {
+  $serviceQuery = (& sc.exe qc $ServiceName 2>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) { throw "Could not read the $ServiceName service configuration." }
+  $imageMatch = [regex]::Match($serviceQuery, '(?im)BINARY_PATH_NAME:\s*(.+)$')
+  if (-not $imageMatch.Success) { throw "Could not read the $ServiceName service executable path." }
+  $defaultsMatch = [regex]::Match($imageMatch.Groups[1].Value, '--defaults-file=(?:"([^"]+)"|(\S+))')
+  if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
+  $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value }
+  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file for $ServiceName." }
+  $section = [regex]::Match([IO.File]::ReadAllText($iniPath), '(?ims)^\[mysqld\][ \t]*\r?\n(.*?)(?=^\[|\z)')
+  if (-not $section.Success) { throw "Could not parse the [mysqld] section in $iniPath." }
+  $portMatch = [regex]::Match($section.Groups[1].Value, '(?im)^[ \t]*port[ \t]*=[ \t]*(\d+)[ \t]*$')
+  if (-not $portMatch.Success) { throw "No explicit MariaDB port was found in $iniPath." }
+  return [int]$portMatch.Groups[1].Value
+}
+
+function Install-IsolatedMariaDbInstance([string] $RootPassword) {
+  $existingServices = @(Get-CimInstance -ClassName Win32_Service -ErrorAction Stop |
+    Where-Object { $_.PathName -match '(?i)(mariadbd|mysqld)\.exe' })
+  if ($existingServices.Count -ne 1) {
+    throw "Expected one existing MariaDB service to provide the database binaries, found $($existingServices.Count). Setup will not choose or change an existing database."
+  }
+  $existingService = $existingServices[0]
+  if ($existingService.Name -notmatch '(?i)maria' -and $existingService.PathName -notmatch '(?i)mariadb') {
+    throw "The existing service '$($existingService.Name)' is not clearly MariaDB. Setup will not use or modify it."
+  }
+  $exeMatch = [regex]::Match($existingService.PathName, '^\s*(?:"(?<exe>[^"]+\.exe)"|(?<exe>\S+\.exe))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if (-not $exeMatch.Success -or $exeMatch.Groups['exe'].Value -notmatch '(?i)(mariadbd|mysqld)\.exe$') {
+    throw 'The existing MariaDB service does not point to a recognized MariaDB server executable; no database changes were made.'
+  }
+  $binDirectory = Split-Path -Parent $exeMatch.Groups['exe'].Value
+  $initializeDb = Join-Path $binDirectory 'mariadb-install-db.exe'
+  if (-not (Test-Path -LiteralPath $initializeDb -PathType Leaf)) {
+    $initializeDb = Join-Path $binDirectory 'mysql_install_db.exe'
+  }
+  if (-not (Test-Path -LiteralPath $initializeDb -PathType Leaf)) {
+    throw "The existing database service '$($existingService.Name)' has no supported MariaDB instance-creation utility. Setup stopped without changing the existing database."
+  }
+
+  $databaseDataRoot = Join-Path $dataRoot 'database'
+  if (Test-Path -LiteralPath $databaseDataRoot) {
+    if (Get-ChildItem -LiteralPath $databaseDataRoot -Force | Select-Object -First 1) {
+      throw "The dedicated database directory already contains files but its service is missing. Setup will not overwrite it: $databaseDataRoot"
+    }
+  } else {
+    New-Item -ItemType Directory -Path $databaseDataRoot -Force | Out-Null
+  }
+  Set-RestrictedAcl $databaseDataRoot 'M'
+  $templatePath = Join-Path $dataRoot 'mariadb-template.ini'
+  [IO.File]::WriteAllText($templatePath, "[mysqld]`r`nbind-address=127.0.0.1`r`n", [Text.UTF8Encoding]::new($false))
+  Set-RestrictedAcl $templatePath 'R'
+  try {
+    $arguments = @(
+      "--datadir=$databaseDataRoot",
+      "--service=$databaseServiceName",
+      "--port=$databasePort",
+      "--password=$RootPassword",
+      "--config=$templatePath"
+    )
+    & $initializeDb @arguments
+    if ($LASTEXITCODE -ne 0) { throw "MariaDB instance creation failed with exit code $LASTEXITCODE." }
+  } finally {
+    Remove-Item -LiteralPath $templatePath -Force -ErrorAction SilentlyContinue
+  }
+
+  $createdService = Get-CimInstance -ClassName Win32_Service -Filter "Name='$databaseServiceName'" -ErrorAction Stop
 }
 
 function Read-InstallCredentials {
@@ -123,7 +218,7 @@ function Read-InstallCredentials {
   $plainPassword = Get-PlainText $password
   $plainConfirm = Get-PlainText $confirm
   if ($plainPassword.Length -lt 12 -or $plainPassword -cne $plainConfirm) { throw 'Passwords must match and contain at least 12 characters.' }
-  $rootSecure = Read-Host 'MariaDB root password you set in the MariaDB installer' -AsSecureString
+  $rootSecure = Read-Host 'MariaDB root password you set in the database setup' -AsSecureString
   return @{
     email = $email; firstName = $first; lastName = $last
     password = $plainPassword; rootPassword = Get-PlainText $rootSecure
@@ -136,6 +231,7 @@ function Invoke-SetupBootstrap($Credentials, [string] $DatabasePassword) {
     configDirectory = $dataRoot
     databaseRootPassword = $Credentials.rootPassword
     databasePassword = $DatabasePassword
+    databasePort = $databasePort
     adminEmail = $Credentials.email
     adminFirstName = $Credentials.firstName
     adminLastName = $Credentials.lastName
@@ -173,7 +269,7 @@ function Install-CbtService {
   <arguments>"$([Security.SecurityElement]::Escape((Join-Path $serverRoot 'dist\server.js')) )"</arguments>
   <workingdirectory>$([Security.SecurityElement]::Escape($dataRoot))</workingdirectory>
   <startmode>Automatic</startmode>
-  <depend>MariaDB</depend>
+  <depend>$([Security.SecurityElement]::Escape($databaseServiceName))</depend>
   <onfailure action="restart" delay="10 sec" />
   <serviceaccount>
     <username>NT AUTHORITY\LocalService</username>
@@ -196,8 +292,13 @@ function Install-CbtService {
   (Get-Service CBTPlatform).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 }
 
+try {
 if (-not (Test-Path -LiteralPath $nodeExe) -or -not (Test-Path -LiteralPath $winSw)) {
   throw 'The installer payload is incomplete (Node runtime or service wrapper is missing).'
+}
+
+if ($DatabasePort -eq 0 -and (Get-Service -Name $databaseServiceName -ErrorAction SilentlyContinue)) {
+  $databasePort = Get-MariaDbPort $databaseServiceName
 }
 
 if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeMarker)) {
@@ -208,6 +309,21 @@ if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeM
     foreach ($line in $envLines) {
       if ($line -match '^([^#=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2].Trim('"'), 'Process') }
     }
+    $databaseLine = $envLines | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Object -First 1
+    if (-not $databaseLine -or $databaseLine -notmatch '127\.0\.0\.1:(\d+)/cbt_system') { throw 'Existing CBT database configuration is not in the supported local format.' }
+    $existingDatabasePort = [int]$Matches[1]
+    $databasePort = $existingDatabasePort
+    if ($existingDatabasePort -eq 3306) {
+      $databaseServiceName = 'MariaDB'
+    } elseif ($existingDatabasePort -ge 3307 -and $existingDatabasePort -le 3399) {
+      $databasePort = $existingDatabasePort
+      $databaseServiceName = [string]$deployment.databaseServiceName
+    } else {
+      throw "The existing CBT installation uses unsupported MariaDB port $existingDatabasePort; no database settings were changed."
+    }
+    $databaseService = Get-Service -Name $databaseServiceName -ErrorAction SilentlyContinue
+    if (-not $databaseService) { throw "The MariaDB service '$databaseServiceName' required by the existing installation is missing." }
+    if ($databaseService.Status -ne 'Running') { Start-Service -Name $databaseServiceName }
     $service = Get-Service CBTPlatform -ErrorAction SilentlyContinue
     if ($service -and $service.Status -ne 'Stopped') { Stop-Service CBTPlatform -Force }
     & $nodeExe (Join-Path $serverRoot 'node_modules\prisma\build\index.js') migrate deploy --config (Join-Path $serverRoot 'prisma.config.ts')
@@ -218,16 +334,30 @@ if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeM
     throw
   }
 } else {
-  $maria = Get-Service MariaDB -ErrorAction SilentlyContinue
-  if (-not $maria) { throw 'MariaDB is not installed. Complete the bundled MariaDB setup first.' }
-  if ($maria.Status -ne 'Running') { Start-Service MariaDB }
-  Set-MariaDbLoopback
-  $credentials = Read-InstallCredentials
+  $databasePassword = $null
   if (Test-Path -LiteralPath $configPath) {
     $databaseLine = Get-Content -LiteralPath $configPath | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Object -First 1
-    if (-not $databaseLine -or $databaseLine -notmatch 'cbt_app:([a-f0-9]{64})@') { throw 'The incomplete setup has no recoverable generated database password.' }
+    if (-not $databaseLine -or $databaseLine -notmatch '127\.0\.0\.1:(\d+)/cbt_system') {
+      throw 'An incomplete install has unsupported database settings. Setup stopped without changing any database.'
+    }
+    $existingDatabasePort = [int]$Matches[1]
+    if ($existingDatabasePort -lt 3307 -or $existingDatabasePort -gt 3399) {
+      throw "An incomplete prior install uses unsupported MariaDB port $existingDatabasePort. Setup will not reuse or alter that database; contact support before retrying."
+    }
+    $databasePort = $existingDatabasePort
+    if ($databaseLine -notmatch 'cbt_app:([a-f0-9]{64})@') { throw 'The incomplete setup has no recoverable generated database password.' }
     $databasePassword = $Matches[1]
-  } else {
+  }
+  $credentials = Read-InstallCredentials
+  $maria = Get-Service -Name $databaseServiceName -ErrorAction SilentlyContinue
+  if (-not $maria -and $UseExistingMariaDbRuntime) {
+    Install-IsolatedMariaDbInstance $credentials.rootPassword
+    $maria = Get-Service -Name $databaseServiceName -ErrorAction SilentlyContinue
+  }
+  if (-not $maria) { throw 'The dedicated MariaDB service is not installed. Setup stopped without modifying another database.' }
+  if ($maria.Status -ne 'Running') { Start-Service -Name $databaseServiceName }
+  Set-MariaDbLoopback $databaseServiceName $databasePort
+  if (-not (Test-Path -LiteralPath $configPath)) {
     $databasePassword = Write-InstallationConfig
   }
   Invoke-SetupBootstrap $credentials $databasePassword
@@ -255,3 +385,21 @@ if (-not (Test-Path -LiteralPath $completeMarker)) {
 }
 
 Write-Host "CBT platform is ready. Staff: http://localhost:5000/admin/login  Student portal: http://localhost:5000/"
+} catch {
+  $message = $_.Exception.Message
+  foreach ($secret in @($credentials.rootPassword, $credentials.password, $databasePassword)) {
+    if ($secret) { $message = $message.Replace([string]$secret, '[REDACTED]') }
+  }
+  $logDirectory = Join-Path $dataRoot 'logs'
+  New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+  Set-RestrictedAcl $logDirectory 'M'
+  $logPath = Join-Path $logDirectory 'installer-provisioning.log'
+  [IO.File]::AppendAllText(
+    $logPath,
+    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz') $message`r`n",
+    [Text.UTF8Encoding]::new($false)
+  )
+  Set-RestrictedAcl $logPath 'R'
+  Write-Host "CBT provisioning failed: $message`nDetails saved to $logPath" -ForegroundColor Red
+  exit 1
+}
