@@ -68,6 +68,7 @@ export function LoginPage() {
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Try again.')
+    } finally {
       setSubmitting(false)
     }
   }
@@ -168,8 +169,14 @@ export function LoginPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full justify-center" loading={submitting}>
-              Sign in
+            <Button
+              type="submit"
+              className="w-full justify-center min-w-32"
+              loading={submitting}
+              aria-live="polite"
+              aria-busy={submitting}
+            >
+              {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
         </Panel>

@@ -2,6 +2,7 @@
 param(
   [Parameter(Mandatory)][string] $InstallRoot,
   [ValidateRange(0, 65535)][int] $DatabasePort = 0,
+  [string] $CredentialsFile,
   [switch] $UseExistingMariaDbRuntime
 )
 
@@ -208,21 +209,21 @@ function Install-IsolatedMariaDbInstance([string] $RootPassword) {
 }
 
 function Read-InstallCredentials {
-  $email = (Read-Host 'First administrator email').Trim().ToLowerInvariant()
-  if ($email -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') { throw 'Enter a valid administrator email address.' }
-  $first = (Read-Host 'First administrator given name').Trim()
-  $last = (Read-Host 'First administrator family name').Trim()
-  if (-not $first -or -not $last) { throw 'Administrator name fields cannot be empty.' }
-  $password = Read-Host 'Choose the first administrator password (at least 12 characters)' -AsSecureString
-  $confirm = Read-Host 'Confirm the administrator password' -AsSecureString
-  $plainPassword = Get-PlainText $password
-  $plainConfirm = Get-PlainText $confirm
-  if ($plainPassword.Length -lt 12 -or $plainPassword -cne $plainConfirm) { throw 'Passwords must match and contain at least 12 characters.' }
-  $rootSecure = Read-Host 'MariaDB root password you set in the database setup' -AsSecureString
-  return @{
-    email = $email; firstName = $first; lastName = $last
-    password = $plainPassword; rootPassword = Get-PlainText $rootSecure
+  if (-not $CredentialsFile -or -not (Test-Path -LiteralPath $CredentialsFile -PathType Leaf)) {
+    throw 'The installer credentials file is missing. This installation can only be repaired with a newer The Platform CBT installer.'
   }
+  try { $provided = Get-Content -LiteralPath $CredentialsFile -Raw | ConvertFrom-Json } catch { throw 'The installer credentials file could not be read securely.' }
+  $email = ([string]$provided.email).Trim().ToLowerInvariant()
+  $first = ([string]$provided.firstName).Trim()
+  $last = ([string]$provided.lastName).Trim()
+  $password = [string]$provided.adminPassword
+  $rootPassword = [string]$provided.rootPassword
+  if ($email -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') { throw 'Enter a valid administrator email address.' }
+  if (-not $first -or -not $last) { throw 'Administrator name fields cannot be empty.' }
+  if ($password.Length -lt 12) { throw 'The administrator password must contain at least 12 characters.' }
+  if ($rootPassword.Length -lt 12) { throw 'The MariaDB root password must contain at least 12 characters.' }
+  Remove-Item -LiteralPath $CredentialsFile -Force -ErrorAction SilentlyContinue
+  return @{ email = $email; firstName = $first; lastName = $last; password = $password; rootPassword = $rootPassword }
 }
 
 function Invoke-SetupBootstrap($Credentials, [string] $DatabasePassword) {

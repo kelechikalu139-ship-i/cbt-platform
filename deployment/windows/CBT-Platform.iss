@@ -55,8 +55,67 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 
 [Code]
 var
+  CredentialsPage: TInputQueryWizardPage;
   UseExistingMariaDbRuntime: Boolean;
   SelectedDatabasePort: Integer;
+
+function CbtJsonEscape(const S: String): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 1 to Length(S) do
+    case Ord(S[I]) of
+      8: Result := Result + '\b';
+      9: Result := Result + '\t';
+      10: Result := Result + '\n';
+      12: Result := Result + '\f';
+      13: Result := Result + '\r';
+      34: Result := Result + '\"';
+      92: Result := Result + '\\';
+    else
+      Result := Result + S[I];
+    end;
+end;
+
+procedure InitializeWizard();
+begin
+  CredentialsPage := CreateInputQueryPage(wpSelectDir,
+    'Set up The Platform CBT', 'Create the first administrator account and database credentials.',
+    'These values are used once during installation. Use a database password of at least 12 characters.');
+  CredentialsPage.Add('Administrator email:', False);
+  CredentialsPage.Add('Administrator first name:', False);
+  CredentialsPage.Add('Administrator family name:', False);
+  CredentialsPage.Add('Administrator password:', True);
+  CredentialsPage.Add('Confirm administrator password:', True);
+  CredentialsPage.Add('MariaDB root password:', True);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Email: String;
+begin
+  Result := True;
+  if CurPageID = CredentialsPage.ID then begin
+    Email := LowerCase(Trim(CredentialsPage.Values[0]));
+    if (Pos('@', Email) = 0) or (Pos('.', Email) = 0) then begin
+      MsgBox('Enter a valid administrator email address.', mbError, MB_OK);
+      Result := False;
+    end else if (Trim(CredentialsPage.Values[1]) = '') or (Trim(CredentialsPage.Values[2]) = '') then begin
+      MsgBox('Enter the administrator first and family names.', mbError, MB_OK);
+      Result := False;
+    end else if (Length(CredentialsPage.Values[3]) < 12) then begin
+      MsgBox('The administrator password must contain at least 12 characters.', mbError, MB_OK);
+      Result := False;
+    end else if CredentialsPage.Values[3] <> CredentialsPage.Values[4] then begin
+      MsgBox('The administrator passwords do not match.', mbError, MB_OK);
+      Result := False;
+    end else if Length(CredentialsPage.Values[5]) < 12 then begin
+      MsgBox('The MariaDB root password must contain at least 12 characters.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
 
 function CbtServiceExists(): Boolean;
 var
@@ -150,9 +209,17 @@ var
   MariaDbPath: string;
   ConfigurePath: string;
   Parameters: string;
+  CredentialsJson: String;
 begin
   if CurStep <> ssPostInstall then
     Exit;
+
+  CredentialsJson := '{"email":"' + CbtJsonEscape(LowerCase(Trim(CredentialsPage.Values[0]))) + '",' +
+    '"firstName":"' + CbtJsonEscape(Trim(CredentialsPage.Values[1])) + '",' +
+    '"lastName":"' + CbtJsonEscape(Trim(CredentialsPage.Values[2])) + '",' +
+    '"adminPassword":"' + CbtJsonEscape(CredentialsPage.Values[3]) + '",' +
+    '"rootPassword":"' + CbtJsonEscape(CredentialsPage.Values[5]) + '"}';
+  SaveStringToFile(ExpandConstant('{tmp}\cbt-install-credentials.json'), CredentialsJson, False);
 
   if not CbtServiceExists and not CbtMariaDbServiceExists and not UseExistingMariaDbRuntime then begin
     MariaDbPath := ExpandConstant('{app}\prerequisites\mariadb.msi');
@@ -161,7 +228,7 @@ begin
     else
     if not Exec(ExpandConstant('{sys}\msiexec.exe'),
       '/i ' + AddQuotes(MariaDbPath) + ' SERVICENAME={#DatabaseService} PORT=' + IntToStr(SelectedDatabasePort) + ' DATADIR=' +
-      AddQuotes(ExpandConstant('{commonappdata}\The Platform CBT\database')) + ' SKIPNETWORKING=1',
+      AddQuotes(ExpandConstant('{commonappdata}\The Platform CBT\database')) + ' SKIPNETWORKING=1 PASSWORD=' + AddQuotes(CredentialsPage.Values[5]),
       '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then
       RaiseException('Could not start the bundled MariaDB installer.')
     else if (ExitCode <> 0) and (ExitCode <> 3010) and (ExitCode <> 1641) then
@@ -170,7 +237,8 @@ begin
 
   ConfigurePath := ExpandConstant('{app}\setup\Install-CBT.ps1');
   Parameters := '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(ConfigurePath) +
-    ' -InstallRoot ' + AddQuotes(ExpandConstant('{app}'));
+    ' -InstallRoot ' + AddQuotes(ExpandConstant('{app}')) +
+    ' -CredentialsFile ' + AddQuotes(ExpandConstant('{tmp}\cbt-install-credentials.json'));
   if SelectedDatabasePort > 0 then
     Parameters := Parameters + ' -DatabasePort ' + IntToStr(SelectedDatabasePort);
   if UseExistingMariaDbRuntime then
