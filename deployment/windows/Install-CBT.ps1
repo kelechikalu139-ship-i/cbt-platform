@@ -257,12 +257,14 @@ function Invoke-SetupBootstrap($Credentials, [string] $DatabasePassword) {
   [void]$process.Start()
   $process.StandardInput.WriteLine($request)
   $process.StandardInput.Close()
+  $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+  $stderrTask = $process.StandardError.ReadToEndAsync()
   if (-not $process.WaitForExit(600000)) {
     $process.Kill()
     throw 'Initial database setup timed out after 10 minutes. Run again after reviewing the installer-provisioning log.'
   }
-  $stdout = $process.StandardOutput.ReadToEnd()
-  $stderr = $process.StandardError.ReadToEnd()
+  $stdout = $stdoutTask.GetAwaiter().GetResult()
+  $stderr = $stderrTask.GetAwaiter().GetResult()
   if ($stdout) { Write-Host $stdout.TrimEnd() }
   if ($process.ExitCode -ne 0) { throw "Initial database setup failed. $($stderr.Trim())" }
 }

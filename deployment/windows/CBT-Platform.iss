@@ -56,6 +56,7 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 [Code]
 var
   CredentialsPage: TInputQueryWizardPage;
+  DatabaseCredentialsPage: TInputQueryWizardPage;
   UseExistingMariaDbRuntime: Boolean;
   SelectedDatabasePort: Integer;
 
@@ -88,7 +89,11 @@ begin
   CredentialsPage.Add('Administrator family name:', False);
   CredentialsPage.Add('Administrator password:', True);
   CredentialsPage.Add('Confirm administrator password:', True);
-  CredentialsPage.Add('MariaDB root password:', True);
+  DatabaseCredentialsPage := CreateInputQueryPage(CredentialsPage.ID,
+    'Set the database password', 'Create the MariaDB administrator password.',
+    'This password is required to install the dedicated CBT database. Use at least 12 characters.');
+  DatabaseCredentialsPage.Add('MariaDB root password:', True);
+  DatabaseCredentialsPage.Add('Confirm MariaDB root password:', True);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -110,8 +115,13 @@ begin
     end else if CredentialsPage.Values[3] <> CredentialsPage.Values[4] then begin
       MsgBox('The administrator passwords do not match.', mbError, MB_OK);
       Result := False;
-    end else if Length(CredentialsPage.Values[5]) < 12 then begin
+    end;
+  end else if CurPageID = DatabaseCredentialsPage.ID then begin
+    if Length(DatabaseCredentialsPage.Values[0]) < 12 then begin
       MsgBox('The MariaDB root password must contain at least 12 characters.', mbError, MB_OK);
+      Result := False;
+    end else if DatabaseCredentialsPage.Values[0] <> DatabaseCredentialsPage.Values[1] then begin
+      MsgBox('The MariaDB root passwords do not match.', mbError, MB_OK);
       Result := False;
     end;
   end;
@@ -217,8 +227,8 @@ begin
   CredentialsJson := '{"email":"' + CbtJsonEscape(LowerCase(Trim(CredentialsPage.Values[0]))) + '",' +
     '"firstName":"' + CbtJsonEscape(Trim(CredentialsPage.Values[1])) + '",' +
     '"lastName":"' + CbtJsonEscape(Trim(CredentialsPage.Values[2])) + '",' +
-    '"adminPassword":"' + CbtJsonEscape(CredentialsPage.Values[3]) + '",' +
-    '"rootPassword":"' + CbtJsonEscape(CredentialsPage.Values[5]) + '"}';
+    '"password":"' + CbtJsonEscape(CredentialsPage.Values[3]) + '",' +
+    '"rootPassword":"' + CbtJsonEscape(DatabaseCredentialsPage.Values[0]) + '"}';
   SaveStringToFile(ExpandConstant('{tmp}\cbt-install-credentials.json'), CredentialsJson, False);
 
   WizardForm.StatusLabel.Caption := 'Preparing the CBT database...';
@@ -230,7 +240,7 @@ begin
     else
     if not Exec(ExpandConstant('{sys}\msiexec.exe'),
       '/i ' + AddQuotes(MariaDbPath) + ' SERVICENAME={#DatabaseService} PORT=' + IntToStr(SelectedDatabasePort) + ' DATADIR=' +
-      AddQuotes(ExpandConstant('{commonappdata}\The Platform CBT\database')) + ' SKIPNETWORKING=1 PASSWORD=' + AddQuotes(CredentialsPage.Values[5]),
+      AddQuotes(ExpandConstant('{commonappdata}\The Platform CBT\database')) + ' SKIPNETWORKING=1 PASSWORD=' + AddQuotes(DatabaseCredentialsPage.Values[0]),
       '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
       RaiseException('Could not start the bundled MariaDB installer.')
     else if (ExitCode <> 0) and (ExitCode <> 3010) and (ExitCode <> 1641) then
