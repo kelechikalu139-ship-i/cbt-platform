@@ -23,8 +23,12 @@ const API = configuredApiUrl
 const API_CONFIGURATION_ERROR =
   "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
+const CURRENT_INSTALLER_URL =
+  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.7/The-Platform-CBT-Setup-1.0.7-unsigned.exe";
 const installerDownloadUrl = (() => {
-  const value = configuredInstallerUrl || "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.7/The-Platform-CBT-Setup-1.0.7-unsigned.exe";
+  const value = configuredInstallerUrl?.includes("1.0.5")
+    ? CURRENT_INSTALLER_URL
+    : configuredInstallerUrl || CURRENT_INSTALLER_URL;
   if (value.startsWith("/")) return value;
   try {
     const url = new URL(value);
@@ -56,11 +60,33 @@ type LicenceEvent = {
   created_at: string;
 };
 type AdminAccount = { id: string; email: string; role: string; status: string; created_at: string; last_login_at?: string | null };
+const AUTH_SESSION_KEY = "cbt-license-auth-session";
+
+function readStoredSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || "null");
+    return typeof saved?.token === "string" && saved?.user
+      ? { token: saved.token as string, user: saved.user as { id: string; email: string; role: string } }
+      : { token: "", user: null as { id: string; email: string; role: string } | null };
+  } catch {
+    return { token: "", user: null as { id: string; email: string; role: string } | null };
+  }
+}
+
+function storeSession(token: string, user: { id: string; email: string; role: string } | null) {
+  if (token && user) {
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ token, user }));
+  } else {
+    localStorage.removeItem(AUTH_SESSION_KEY);
+  }
+}
+
 const fmt = (v?: string) =>
   v ? new Date(v).toLocaleDateString() : "No expiry";
 const fmtTimestamp = (v: string) => new Date(v).toLocaleString();
 export default function App() {
-  const [token, setToken] = useState(""),
+  const initialSession = readStoredSession();
+  const [token, setToken] = useState(initialSession.token),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -71,7 +97,7 @@ export default function App() {
   const [mfaChallengeToken, setMfaChallengeToken] = useState("");
   const [mfaSetupUrl, setMfaSetupUrl] = useState("");
   const [mfaQrDataUrl, setMfaQrDataUrl] = useState("");
-  const [user, setUser] = useState<{ id: string; email: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; email: string; role: string } | null>(initialSession.user);
   const [invitationToken, setInvitationToken] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
   const [bootstrapToken, setBootstrapToken] = useState(() => new URLSearchParams(window.location.search).get("setup") || "");
   const [authMode, setAuthMode] = useState<"login" | "mfa-login" | "invite" | "bootstrap" | "mfa-setup">(() => {
@@ -188,6 +214,9 @@ export default function App() {
   useEffect(() => {
     if (token && authMode !== "mfa-setup") void load();
   }, [token, authMode]);
+  useEffect(() => {
+    storeSession(authMode === "mfa-setup" ? "" : token, authMode === "mfa-setup" ? null : user);
+  }, [token, user, authMode]);
   async function login(e: React.FormEvent) {
     e.preventDefault();
     if (loginBusy) return;
