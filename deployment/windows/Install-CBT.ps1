@@ -181,12 +181,17 @@ function Install-IsolatedMariaDbInstance([string] $RootPassword) {
 
   $databaseDataRoot = Join-Path $dataRoot 'database'
   if (Test-Path -LiteralPath $databaseDataRoot) {
-    if (Get-ChildItem -LiteralPath $databaseDataRoot -Force | Select-Object -First 1) {
-      throw "The dedicated database directory already contains files but its service is missing. Setup will not overwrite it: $databaseDataRoot"
+    $existingEntries = @(Get-ChildItem -LiteralPath $databaseDataRoot -Force -ErrorAction SilentlyContinue)
+    if ($existingEntries.Count -gt 0) {
+      & icacls.exe $databaseDataRoot /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+      try {
+        Remove-Item -LiteralPath $databaseDataRoot -Recurse -Force -ErrorAction Stop
+      } catch {
+        throw "A failed CBT database setup is blocking retry. Details saved in $dataRoot. Clear $databaseDataRoot after closing database processes, then rerun setup. $($_.Exception.Message)"
+      }
     }
-  } else {
-    New-Item -ItemType Directory -Path $databaseDataRoot -Force | Out-Null
   }
+  New-Item -ItemType Directory -Path $databaseDataRoot -Force -ErrorAction Stop | Out-Null
   Set-RestrictedAcl $databaseDataRoot 'M'
   $templatePath = Join-Path $dataRoot 'mariadb-template.ini'
   [IO.File]::WriteAllText($templatePath, "[mysqld]`r`nbind-address=127.0.0.1`r`n", [Text.UTF8Encoding]::new($false))
@@ -252,9 +257,12 @@ function Invoke-SetupBootstrap($Credentials, [string] $DatabasePassword) {
   [void]$process.Start()
   $process.StandardInput.WriteLine($request)
   $process.StandardInput.Close()
+  if (-not $process.WaitForExit(600000)) {
+    $process.Kill()
+    throw 'Initial database setup timed out after 10 minutes. Run again after reviewing the installer-provisioning log.'
+  }
   $stdout = $process.StandardOutput.ReadToEnd()
   $stderr = $process.StandardError.ReadToEnd()
-  $process.WaitForExit()
   if ($stdout) { Write-Host $stdout.TrimEnd() }
   if ($process.ExitCode -ne 0) { throw "Initial database setup failed. $($stderr.Trim())" }
 }

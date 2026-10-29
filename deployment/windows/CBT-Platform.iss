@@ -153,7 +153,7 @@ begin
       ' -PortRangeStart {#DatabasePortStart} -PortRangeEnd {#DatabasePortEnd}' +
       ' -ServiceName {#DatabaseService} -OutputPath ' +
       AddQuotes(ExpandConstant('{tmp}\cbt-database-port.txt')),
-      '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then begin
+      '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then begin
       Result := 'Could not check the dedicated CBT database port.';
       Exit;
     end else if (ExitCode = 0) or (ExitCode = 2) then begin
@@ -197,7 +197,7 @@ begin
   PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
   if not Exec(PowerShellPath,
     '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(ScriptPath),
-    '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then
+    '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
     Result := 'Could not start the CBT upgrade backup step.'
   else if ExitCode <> 0 then
     Result := 'Upgrade stopped because the CBT service could not be stopped and backed up. Review the installer output and retry.';
@@ -229,7 +229,7 @@ begin
     if not Exec(ExpandConstant('{sys}\msiexec.exe'),
       '/i ' + AddQuotes(MariaDbPath) + ' SERVICENAME={#DatabaseService} PORT=' + IntToStr(SelectedDatabasePort) + ' DATADIR=' +
       AddQuotes(ExpandConstant('{commonappdata}\The Platform CBT\database')) + ' SKIPNETWORKING=1 PASSWORD=' + AddQuotes(CredentialsPage.Values[5]),
-      '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then
+      '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
       RaiseException('Could not start the bundled MariaDB installer.')
     else if (ExitCode <> 0) and (ExitCode <> 3010) and (ExitCode <> 1641) then
       RaiseException('MariaDB installation did not complete. Setup has stopped; rerun after resolving the MariaDB installer issue.')
@@ -244,7 +244,7 @@ begin
   if UseExistingMariaDbRuntime then
     Parameters := Parameters + ' -UseExistingMariaDbRuntime';
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    Parameters, '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then
+    Parameters, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
     RaiseException('Could not start CBT provisioning.')
   else if ExitCode <> 0 then
     RaiseException('CBT provisioning did not complete. Review the error above and rerun setup to continue or repair the installation.')
