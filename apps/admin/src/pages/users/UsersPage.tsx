@@ -26,7 +26,7 @@ import {
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useTableState } from '../../hooks/useTableState'
 import { PendingActionModal } from '../questions/QuestionsPage'
-import { ROLES, ROLE_LABELS, type Role, type User } from '../../types'
+import { ROLES, ROLE_LABELS, type Role, type User, type UserInput } from '../../types'
 import { usersApi } from '../../services'
 import { formatDateTime, formatRelative, initials } from '../../utils'
 
@@ -83,7 +83,7 @@ export function UsersPage({ users, meta, loading = false, error = null, onRetry 
 
   const createMutation = useMutation({
     mutationFn: (payload: { email: string; password: string; firstName: string; lastName: string; roleCode: Exclude<Role, 'STUDENT'>; status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' }) =>
-      usersApi.create(payload as any),
+      usersApi.create(payload satisfies UserInput),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
       setAddOpen(false)

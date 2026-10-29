@@ -54,7 +54,14 @@ export function SubjectEditor({
       status: subject?.status ?? 'ACTIVE',
     })
     setFieldErrors({})
-  }, [subject?.id, categories])
+  }, [
+    subject?.id,
+    subject?.name,
+    subject?.categoryId,
+    subject?.code,
+    subject?.status,
+    categories,
+  ])
 
   const validate = (): Record<string, string> => {
     const errors: Record<string, string> = {}

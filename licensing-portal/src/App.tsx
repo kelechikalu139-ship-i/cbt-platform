@@ -24,9 +24,10 @@ const API_CONFIGURATION_ERROR =
   "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
 const installerDownloadUrl = (() => {
-  if (!configuredInstallerUrl) return null;
+  const value = configuredInstallerUrl || "/downloads/The-Platform-CBT-Setup-1.0.7-unsigned.exe";
+  if (value.startsWith("/")) return value;
   try {
-    const url = new URL(configuredInstallerUrl);
+    const url = new URL(value);
     return url.protocol === "https:" ? url.toString() : null;
   } catch {
     return null;
@@ -85,7 +86,8 @@ export default function App() {
     [events, setEvents] = useState<LicenceEvent[]>([]),
     [admins, setAdmins] = useState<AdminAccount[]>([]),
     [error, setError] = useState(API ? "" : API_CONFIGURATION_ERROR),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [loginBusy, setLoginBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
@@ -188,6 +190,8 @@ export default function App() {
   }, [token, authMode]);
   async function login(e: React.FormEvent) {
     e.preventDefault();
+    if (loginBusy) return;
+    setLoginBusy(true);
     setError("");
     try {
       const mfaStep = authMode === "mfa-login";
@@ -222,6 +226,8 @@ export default function App() {
       setMfaChallengeToken("");
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setLoginBusy(false);
     }
   }
   async function verifyMfaSetup(e: React.FormEvent) {
@@ -376,7 +382,7 @@ export default function App() {
         <section className="panel loginpanel"><form className="authfields" onSubmit={login}>
           <h2>Multi-factor verification</h2><p className="muted">Signing in as {email}</p>
           <label>Authenticator or recovery code<input type="text" autoComplete="one-time-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} autoFocus required /></label>
-          {error && <p className="error">{error}</p>}<button className="primary"><LogIn size={17} /> Verify and sign in</button>
+          {error && <p className="error">{error}</p>}<button className="primary" disabled={loginBusy}><span className="spinner" aria-hidden="true" />{loginBusy ? "Verifying…" : <><LogIn size={17} /> Verify and sign in</>}</button>
           <button type="button" className="secondary" onClick={() => { setAuthMode("login"); setMfaCode(""); setMfaChallengeToken(""); setError(""); }}>Back to email and password</button>
         </form></section>
       </main>
@@ -470,8 +476,8 @@ export default function App() {
           </label>
           <label>Authenticator or recovery code<input type="text" autoComplete="one-time-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="6-digit code or recovery code" /></label>
           {error && <p className="error">{error}</p>}
-          <button className="primary">
-            <LogIn size={17} /> Sign in securely
+          <button className="primary" disabled={loginBusy}>
+            {loginBusy ? <><span className="spinner" aria-hidden="true" /> Signing in…</> : <><LogIn size={17} /> Sign in securely</>}
           </button>
           <p className="hint">
             Administrator accounts are created by the super-admin. Contact your product owner if you need access.

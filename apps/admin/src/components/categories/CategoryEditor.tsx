@@ -53,7 +53,13 @@ export function CategoryEditor({
       isActive: category?.isActive ?? true,
     })
     setFieldErrors({})
-  }, [category?.id])
+  }, [
+    category?.id,
+    category?.name,
+    category?.description,
+    category?.sortOrder,
+    category?.isActive,
+  ])
 
   const validate = (): Record<string, string> => {
     const errors: Record<string, string> = {}

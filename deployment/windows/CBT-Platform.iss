@@ -221,6 +221,8 @@ begin
     '"rootPassword":"' + CbtJsonEscape(CredentialsPage.Values[5]) + '"}';
   SaveStringToFile(ExpandConstant('{tmp}\cbt-install-credentials.json'), CredentialsJson, False);
 
+  WizardForm.StatusLabel.Caption := 'Preparing the CBT database...';
+  WizardForm.ProgressGauge.Position := 90;
   if not CbtServiceExists and not CbtMariaDbServiceExists and not UseExistingMariaDbRuntime then begin
     MariaDbPath := ExpandConstant('{app}\prerequisites\mariadb.msi');
     if SelectedDatabasePort = 0 then
@@ -235,6 +237,8 @@ begin
       RaiseException('MariaDB installation did not complete. Setup has stopped; rerun after resolving the MariaDB installer issue.')
   end;
 
+  WizardForm.StatusLabel.Caption := 'Configuring CBT services and creating the administrator account...';
+  WizardForm.ProgressGauge.Position := 95;
   ConfigurePath := ExpandConstant('{app}\setup\Install-CBT.ps1');
   Parameters := '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(ConfigurePath) +
     ' -InstallRoot ' + AddQuotes(ExpandConstant('{app}')) +
