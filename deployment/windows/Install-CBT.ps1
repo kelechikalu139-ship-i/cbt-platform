@@ -24,6 +24,18 @@ if (($databasePort -lt 3307 -or $databasePort -gt 3399) -or $databaseServiceName
 function Set-RestrictedAcl([string] $Path, [string] $ServicePermission) {
   $isDirectory = (Get-Item -LiteralPath $Path).PSIsContainer
   $acl = Get-Acl -LiteralPath $Path
+  try {
+    $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $acl.SetOwner($administratorsSid)
+    Set-Acl -LiteralPath $Path -AclObject $acl
+    $acl = Get-Acl -LiteralPath $Path
+  } catch {
+    & takeown.exe /F $Path /A | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not take ownership of $Path" }
+    & icacls.exe $Path /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not reset permissions on $Path" }
+    $acl = Get-Acl -LiteralPath $Path
+  }
   $acl.SetAccessRuleProtection($true, $false)
   foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
   $inheritance = if ($isDirectory) {
