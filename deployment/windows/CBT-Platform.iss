@@ -220,6 +220,8 @@ var
   MariaDbPath: string;
   ConfigurePath: string;
   Parameters: string;
+  ProvisionLogPath: String;
+  ProvisionOutput: AnsiString;
   CredentialsJson: String;
 begin
   if CurStep <> ssPostInstall then
@@ -251,6 +253,7 @@ begin
   WizardForm.StatusLabel.Caption := 'Configuring CBT services and creating the administrator account...';
   WizardForm.ProgressGauge.Position := 95;
   ConfigurePath := ExpandConstant('{app}\setup\Install-CBT.ps1');
+  ProvisionLogPath := ExpandConstant('{tmp}\cbt-provisioning-output.log');
   Parameters := '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(ConfigurePath) +
     ' -InstallRoot ' + AddQuotes(ExpandConstant('{app}')) +
     ' -CredentialsFile ' + AddQuotes(ExpandConstant('{tmp}\cbt-install-credentials.json'));
@@ -258,9 +261,22 @@ begin
     Parameters := Parameters + ' -DatabasePort ' + IntToStr(SelectedDatabasePort);
   if UseExistingMariaDbRuntime then
     Parameters := Parameters + ' -UseExistingMariaDbRuntime';
-  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+  Parameters := '/d /s /c ""' + ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe') + '" -NoProfile -ExecutionPolicy Bypass -File ' +
+    AddQuotes(ConfigurePath) + ' -InstallRoot ' + AddQuotes(ExpandConstant('{app}')) +
+    ' -CredentialsFile ' + AddQuotes(ExpandConstant('{tmp}\cbt-install-credentials.json')) +
+    ' -DatabasePort ' + IntToStr(SelectedDatabasePort);
+  if UseExistingMariaDbRuntime then
+    Parameters := Parameters + ' -UseExistingMariaDbRuntime';
+  Parameters := Parameters + ' > "' + ProvisionLogPath + '" 2>&1"';
+  if not Exec(ExpandConstant('{sys}\cmd.exe'),
     Parameters, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
     RaiseException('Could not start CBT provisioning.')
-  else if ExitCode <> 0 then
-    RaiseException('CBT provisioning did not complete. Review the error above and rerun setup to continue or repair the installation.')
+  else if ExitCode <> 0 then begin
+    ProvisionOutput := '';
+    LoadStringFromFile(ProvisionLogPath, ProvisionOutput);
+    if Trim(ProvisionOutput) <> '' then
+      RaiseException('CBT provisioning failed:'#13#10 + Trim(ProvisionOutput))
+    else
+      RaiseException('CBT provisioning did not complete. The provisioning log was empty.');
+  end;
 end;

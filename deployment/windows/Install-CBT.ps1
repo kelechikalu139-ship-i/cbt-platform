@@ -23,7 +23,10 @@ if (($databasePort -lt 3307 -or $databasePort -gt 3399) -or $databaseServiceName
 
 function Set-RestrictedAcl([string] $Path, [string] $ServicePermission) {
   $isDirectory = (Get-Item -LiteralPath $Path).PSIsContainer
+  & icacls.exe $Path /grant '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
   $acl = Get-Acl -LiteralPath $Path
+  $credentials = $null
+  $databasePassword = $null
   try {
     $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
     $acl.SetOwner($administratorsSid)
@@ -436,14 +439,14 @@ Write-Host "CBT platform is ready. Staff: http://localhost:5000/admin/login  Stu
   }
   $logDirectory = Join-Path $dataRoot 'logs'
   New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
-  Set-RestrictedAcl $logDirectory 'M'
   $logPath = Join-Path $logDirectory 'installer-provisioning.log'
   [IO.File]::AppendAllText(
     $logPath,
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz') $message`r`n",
     [Text.UTF8Encoding]::new($false)
   )
-  Set-RestrictedAcl $logPath 'R'
+  try { Set-RestrictedAcl $logDirectory 'M' } catch {}
+  try { Set-RestrictedAcl $logPath 'R' } catch {}
   Write-Host "CBT provisioning failed: $message`nDetails saved to $logPath" -ForegroundColor Red
   exit 1
 }
