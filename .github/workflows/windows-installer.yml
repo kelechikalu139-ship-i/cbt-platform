@@ -1,0 +1,74 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Installer semantic version
+        required: true
+        default: 1.0.8
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Download pinned release binaries
+        shell: pwsh
+        run: |
+          $vendor = "deployment/windows/vendor"
+          Invoke-WebRequest "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET461.exe" -OutFile "$vendor/WinSW.NET461.exe"
+          Invoke-WebRequest "https://raw.githubusercontent.com/winsw/winsw/v2.12.0/LICENSE.txt" -OutFile "$vendor/WinSW-LICENSE.txt"
+          (Get-FileHash "$vendor/WinSW.NET461.exe" -Algorithm SHA256).Hash.ToLower()
+
+      - name: Stage release
+        shell: pwsh
+        env:
+          CBT_LICENSE_PUBLIC_KEY_B64: ${{ secrets.CBT_LICENSE_PUBLIC_KEY_B64 }}
+          CBT_LICENSE_API_URL: ${{ secrets.CBT_LICENSE_API_URL }}
+        run: |
+          if (-not $env:CBT_LICENSE_PUBLIC_KEY_B64) { throw "Missing CBT_LICENSE_PUBLIC_KEY_B64 repository secret." }
+          if (-not $env:CBT_LICENSE_API_URL) { throw "Missing CBT_LICENSE_API_URL repository secret." }
+          $version = "${{ github.event.inputs.version }}"
+          if (-not $version) { $version = "${{ github.ref_name }}".TrimStart("v") }
+          "CBT_VERSION=$version" >> $env:GITHUB_ENV
+          .\deployment\windows\build-release.ps1 `
+            -Version $version `
+            -NodeRuntimeZip deployment\windows\vendor\node-v24.22.1-win-x64.zip `
+            -MariaDbMsi deployment\windows\vendor\mariadb-11.8.9-winx64.msi `
+            -WinSwExe deployment\windows\vendor\WinSW.NET461.exe `
+            -WinSwLicense deployment\windows\vendor\WinSW-LICENSE.txt `
+            -NodeRuntimeSha256 d2046d28c2c3dcd211ac5145c0bf30e2047ef9dfb306693c8c6e2eccd8b95fa5 `
+            -MariaDbSha256 372822572baa7f429b9068d583336a9e46b109c12bb0b24eb66dbeb6ad0a563e `
+            -WinSwSha256 b5066b7bbdfba1293e5d15cda3caaea88fbeab35bd5b38c41c913d492aadfc4f `
+            -LicensingApiUrl $env:CBT_LICENSE_API_URL `
+            -LicensePublicKeyB64 $env:CBT_LICENSE_PUBLIC_KEY_B64
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $env:CBT_RELEASE_VERSION = $env:CBT_VERSION
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" deployment\windows\CBT-Platform.iss
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = "deployment/windows/build/$env:CBT_VERSION/The-Platform-CBT-Setup-$env:CBT_VERSION-unsigned.exe"
+          gh release create "v$env:CBT_VERSION" $installer --repo "${{ github.repository }}" --title "The Platform CBT $env:CBT_VERSION" --notes "Fixed Windows installer provisioning."
