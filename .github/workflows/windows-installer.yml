@@ -28,6 +28,10 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
+      - name: Install repository dependencies
+        shell: pwsh
+        run: npm ci
+
       - name: Download pinned release binaries
         shell: pwsh
         run: |
