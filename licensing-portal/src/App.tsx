@@ -26,7 +26,7 @@ const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
 const CURRENT_INSTALLER_URL =
   "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.9/The-Platform-CBT-Setup-1.0.9-unsigned.exe";
 const installerDownloadUrl = (() => {
-  const value = configuredInstallerUrl?.match(/(?:^|[/_-])1\.0\.[0-7](?:[/_.-]|$)/)
+  const value = configuredInstallerUrl?.match(/(?:^|[/_-])1\.0\.[0-8](?:[/_.-]|$)/)
     ? CURRENT_INSTALLER_URL
     : configuredInstallerUrl || CURRENT_INSTALLER_URL;
   if (value.startsWith("/")) return value;
