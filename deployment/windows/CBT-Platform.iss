@@ -239,7 +239,7 @@ begin
       RaiseException('The installer did not select a free local database port.')
     else
     if not Exec(ExpandConstant('{sys}\msiexec.exe'),
-      '/i ' + AddQuotes(MariaDbPath) + ' SERVICENAME={#DatabaseService} PORT=' + IntToStr(SelectedDatabasePort) + ' DATADIR=' +
+      '/i ' + AddQuotes(MariaDbPath) + ' /qn /norestart SERVICENAME={#DatabaseService} PORT=' + IntToStr(SelectedDatabasePort) + ' DATADIR=' +
       AddQuotes(ExpandConstant('{commonappdata}\The Platform CBT\database')) + ' SKIPNETWORKING=1 PASSWORD=' + AddQuotes(DatabaseCredentialsPage.Values[0]),
       '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
       RaiseException('Could not start the bundled MariaDB installer.')

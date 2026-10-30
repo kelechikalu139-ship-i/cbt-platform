@@ -23,9 +23,31 @@ if (($databasePort -lt 3307 -or $databasePort -gt 3399) -or $databaseServiceName
 
 function Set-RestrictedAcl([string] $Path, [string] $ServicePermission) {
   $isDirectory = (Get-Item -LiteralPath $Path).PSIsContainer
-  $inherit = if ($isDirectory) { '(OI)(CI)' } else { '' }
-  & icacls.exe $Path /inheritance:r /grant:r "SYSTEM:${inherit}F" "BUILTIN\Administrators:${inherit}F" "NT AUTHORITY\LOCAL SERVICE:${inherit}$ServicePermission" | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw "Could not secure permissions on $Path" }
+  $acl = Get-Acl -LiteralPath $Path
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+  $inheritance = if ($isDirectory) {
+    [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+  } else { [Security.AccessControl.InheritanceFlags]::None }
+  foreach ($identity in @('SYSTEM', 'BUILTIN\Administrators')) {
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($identity, [Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+  }
+  $serviceRights = switch ($ServicePermission) {
+    'M' { [Security.AccessControl.FileSystemRights]::Modify }
+    'F' { [Security.AccessControl.FileSystemRights]::FullControl }
+    default { [Security.AccessControl.FileSystemRights]::ReadAndExecute }
+  }
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new('NT AUTHORITY\LOCAL SERVICE', $serviceRights, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+  Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Grant-ServiceAccountAccess([string] $Path, [string] $Identity, [Security.AccessControl.FileSystemRights] $Rights) {
+  $acl = Get-Acl -LiteralPath $Path
+  $inheritance = if ((Get-Item -LiteralPath $Path).PSIsContainer) {
+    [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+  } else { [Security.AccessControl.InheritanceFlags]::None }
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($Identity, $Rights, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+  Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
 function Get-PlainText([Security.SecureString] $Value) {
@@ -107,10 +129,8 @@ function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
   $serviceInfo = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
   $serviceAccount = [string]$serviceInfo.StartName
   if ($serviceAccount -and $serviceAccount -notin @('LocalSystem', 'NT AUTHORITY\SYSTEM')) {
-    & icacls.exe $dataRoot /grant:r "${serviceAccount}:(RX)" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not grant the dedicated MariaDB service access to its configuration directory.' }
-    & icacls.exe $databaseDataRoot /grant:r "${serviceAccount}:(OI)(CI)M" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not grant the dedicated MariaDB service access to its data directory.' }
+    Grant-ServiceAccountAccess $dataRoot $serviceAccount ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
+    Grant-ServiceAccountAccess $databaseDataRoot $serviceAccount ([Security.AccessControl.FileSystemRights]::Modify)
   }
 
   $content = [IO.File]::ReadAllText($iniPath)
@@ -183,7 +203,8 @@ function Install-IsolatedMariaDbInstance([string] $RootPassword) {
   if (Test-Path -LiteralPath $databaseDataRoot) {
     $existingEntries = @(Get-ChildItem -LiteralPath $databaseDataRoot -Force -ErrorAction SilentlyContinue)
     if ($existingEntries.Count -gt 0) {
-      & icacls.exe $databaseDataRoot /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+      Grant-ServiceAccountAccess $databaseDataRoot 'BUILTIN\Administrators' ([Security.AccessControl.FileSystemRights]::FullControl)
+      Grant-ServiceAccountAccess $databaseDataRoot 'SYSTEM' ([Security.AccessControl.FileSystemRights]::FullControl)
       try {
         Remove-Item -LiteralPath $databaseDataRoot -Recurse -Force -ErrorAction Stop
       } catch {
@@ -221,7 +242,7 @@ function Read-InstallCredentials {
   $email = ([string]$provided.email).Trim().ToLowerInvariant()
   $first = ([string]$provided.firstName).Trim()
   $last = ([string]$provided.lastName).Trim()
-  $password = [string]$provided.adminPassword
+  $password = if ($null -ne $provided.adminPassword) { [string]$provided.adminPassword } else { [string]$provided.password }
   $rootPassword = [string]$provided.rootPassword
   if ($email -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') { throw 'Enter a valid administrator email address.' }
   if (-not $first -or -not $last) { throw 'Administrator name fields cannot be empty.' }

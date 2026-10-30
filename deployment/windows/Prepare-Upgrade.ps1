@@ -42,8 +42,13 @@ $defaultsFile = Join-Path $dataRoot "db-backup-$timestamp.cnf"
 $backupFile = Join-Path $backupDir "cbt_system-$timestamp.sql"
 $cnf = "[client]`r`nuser=$dbUser`r`npassword=`"$dbPassword`"`r`nhost=$dbHost`r`nport=$dbPort`r`nprotocol=tcp`r`n"
 [IO.File]::WriteAllText($defaultsFile, $cnf, [Text.UTF8Encoding]::new($false))
-& icacls.exe $defaultsFile /inheritance:r /grant:r 'SYSTEM:F' 'BUILTIN\Administrators:F' 'NT AUTHORITY\LOCAL SERVICE:R' | Out-Null
-if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $defaultsFile -Force; throw 'Could not secure temporary backup credentials.' }
+$acl = Get-Acl -LiteralPath $defaultsFile
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new('SYSTEM', [Security.AccessControl.FileSystemRights]::FullControl, [Security.AccessControl.InheritanceFlags]::None, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new('BUILTIN\Administrators', [Security.AccessControl.FileSystemRights]::FullControl, [Security.AccessControl.InheritanceFlags]::None, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new('NT AUTHORITY\LOCAL SERVICE', [Security.AccessControl.FileSystemRights]::ReadAndExecute, [Security.AccessControl.InheritanceFlags]::None, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow))
+Set-Acl -LiteralPath $defaultsFile -AclObject $acl
 try {
   & $dumpPath "--defaults-extra-file=$defaultsFile" '--single-transaction' '--routines' '--events' "--result-file=$backupFile" $dbName
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $backupFile) -or (Get-Item -LiteralPath $backupFile).Length -lt 100) {
