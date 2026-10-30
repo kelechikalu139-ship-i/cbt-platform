@@ -143,7 +143,9 @@ function Get-MariaDbIniPath([string] $ServiceName) {
     throw "The $ServiceName service does not identify its MariaDB configuration file."
   }
   $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value.Trim('"') }
-  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file for $ServiceName." }
+  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) {
+    throw "Could not find the MariaDB configuration file for $ServiceName at $iniPath."
+  }
   return $iniPath
 }
 
@@ -152,8 +154,19 @@ function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
   $defaultsMatch = [regex]::Match($imagePath, '(?:--defaults-file=|\bdefaults-file=)(?:"([^"]+)"|(\S+))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
   if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
   $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value.Trim('"') }
-  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file at $iniPath." }
   $databaseDataRoot = Join-Path $dataRoot 'database'
+  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) {
+    New-Item -ItemType Directory -Path (Split-Path -Parent $iniPath) -Force | Out-Null
+    $exeMatch = [regex]::Match($imagePath, '(?i)(?<exe>"[^"]+\\(mariadbd|mysqld)\.exe"|\S+\\(mariadbd|mysqld)\.exe)')
+    $serverExe = if ($exeMatch.Success) { $exeMatch.Groups['exe'].Value.Trim('"') } else { '' }
+    if ($serverExe) {
+      $baseDirectory = Split-Path -Parent (Split-Path -Parent $serverExe)
+      $content = "[client]`r`nport=$Port`r`nhost=127.0.0.1`r`n`r`n[mysqld]`r`nbasedir=$baseDirectory`r`ndatadir=$databaseDataRoot`r`nbind-address=127.0.0.1`r`nport=$Port`r`nskip-networking=0`r`n"
+    } else {
+      $content = "[client]`r`nport=$Port`r`nhost=127.0.0.1`r`n`r`n[mysqld]`r`ndatadir=$databaseDataRoot`r`nbind-address=127.0.0.1`r`nport=$Port`r`nskip-networking=0`r`n"
+    }
+    [IO.File]::WriteAllText($iniPath, $content, [Text.UTF8Encoding]::new($false))
+  }
   $serviceInfo = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
   $serviceAccount = [string]$serviceInfo.StartName
   if ($serviceAccount -and $serviceAccount -notin @('LocalSystem', 'NT AUTHORITY\SYSTEM')) {

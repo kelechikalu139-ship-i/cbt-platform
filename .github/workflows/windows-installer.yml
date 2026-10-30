@@ -6,7 +6,7 @@ on:
       version:
         description: Installer semantic version
         required: true
-        default: 1.0.11
+        default: 1.0.12
   push:
     tags:
       - "v*.*.*"
