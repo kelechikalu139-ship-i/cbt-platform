@@ -326,6 +326,38 @@ function Invoke-SetupBootstrap($Credentials, [string] $DatabasePassword) {
   if ($process.ExitCode -ne 0) { throw "Initial database setup failed. $($stderr.Trim())" }
 }
 
+function Reset-MariaDbRootAuthentication([string] $ServiceName, [string] $RootPassword, [int] $Port) {
+  $imagePath = Get-MariaDbServiceImage $ServiceName
+  $exeMatch = [regex]::Match($imagePath, '(?i)(?<exe>"[^"]+\\(mariadbd|mysqld)\.exe"|\S+\\(mariadbd|mysqld)\.exe)')
+  if (-not $exeMatch.Success) { throw 'Could not locate the MariaDB server executable.' }
+  $serverExe = $exeMatch.Groups['exe'].Value.Trim('"')
+  $binDirectory = Split-Path -Parent $serverExe
+  $clientExe = Join-Path $binDirectory 'mariadb.exe'
+  if (-not (Test-Path -LiteralPath $clientExe -PathType Leaf)) {
+    $clientExe = Join-Path $binDirectory 'mysql.exe'
+  }
+  if (-not (Test-Path -LiteralPath $clientExe -PathType Leaf)) {
+    throw 'MariaDB client executable was not found; cannot normalize root authentication.'
+  }
+
+  $sqlPassword = $RootPassword.Replace('\', '\\').Replace('"', '\"')
+  $sql = @(
+    "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD(""$sqlPassword"");"
+    "ALTER USER 'root'@'127.0.0.1' IDENTIFIED VIA mysql_native_password USING PASSWORD(""$sqlPassword"");"
+    "FLUSH PRIVILEGES;"
+  ) -join "`r`n"
+  $sqlPath = Join-Path $env:TEMP 'cbt-reset-root.sql'
+  [IO.File]::WriteAllText($sqlPath, $sql, [Text.UTF8Encoding]::new($false))
+  try {
+    & $clientExe '--protocol=TCP' "--host=127.0.0.1" "--port=$Port" '--user=root' "--password=$RootPassword" "--execute=$($sql -replace '`r?`n', ' ')" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "MariaDB root authentication could not be normalized (exit code $LASTEXITCODE)."
+    }
+  } finally {
+    Remove-Item -LiteralPath $sqlPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Install-CbtService {
   $wrapperConfig = Join-Path (Split-Path $winSw -Parent) 'cbt-service.xml'
   $xml = @"
@@ -425,6 +457,7 @@ if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeM
   if (-not $maria) { throw 'The dedicated MariaDB service is not installed. Setup stopped without modifying another database.' }
   if ($maria.Status -ne 'Running') { Start-Service -Name $databaseServiceName }
   Set-MariaDbLoopback $databaseServiceName $databasePort
+  Reset-MariaDbRootAuthentication $databaseServiceName $credentials.rootPassword $databasePort
   if (-not (Test-Path -LiteralPath $configPath)) {
     $databasePassword = Write-InstallationConfig
   }
