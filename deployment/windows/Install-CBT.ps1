@@ -340,21 +340,23 @@ function Reset-MariaDbRootAuthentication([string] $ServiceName, [string] $RootPa
     throw 'MariaDB client executable was not found; cannot normalize root authentication.'
   }
 
-  $sqlPassword = $RootPassword.Replace('\', '\\').Replace('"', '\"')
+  $sqlPassword = $RootPassword.Replace("'", "''")
   $sql = @(
-    "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD(""$sqlPassword"");"
-    "ALTER USER 'root'@'127.0.0.1' IDENTIFIED VIA mysql_native_password USING PASSWORD(""$sqlPassword"");"
+    "CREATE USER IF NOT EXISTS 'root'@'localhost' IDENTIFIED BY '$sqlPassword';"
+    "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '$sqlPassword';"
+    "ALTER USER 'root'@'localhost' IDENTIFIED BY '$sqlPassword';"
+    "ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '$sqlPassword';"
+    "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION;"
+    "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;"
     "FLUSH PRIVILEGES;"
   ) -join "`r`n"
-  $sqlPath = Join-Path $env:TEMP 'cbt-reset-root.sql'
-  [IO.File]::WriteAllText($sqlPath, $sql, [Text.UTF8Encoding]::new($false))
   try {
-    & $clientExe '--protocol=TCP' "--host=127.0.0.1" "--port=$Port" '--user=root' "--password=$RootPassword" "--execute=$($sql -replace '`r?`n', ' ')" 2>&1
+    $output = $sql | & $clientExe '--protocol=TCP' "--host=127.0.0.1" "--port=$Port" '--user=root' "--password=$RootPassword" '--batch' '--skip-column-names' 2>&1
     if ($LASTEXITCODE -ne 0) {
-      throw "MariaDB root authentication could not be normalized (exit code $LASTEXITCODE)."
+      throw "MariaDB root authentication could not be normalized (exit code $LASTEXITCODE): $($output | Out-String)"
     }
   } finally {
-    Remove-Item -LiteralPath $sqlPath -Force -ErrorAction SilentlyContinue
+    # Authentication is normalized by the mariadb client.
   }
 }
 
