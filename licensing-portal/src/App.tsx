@@ -24,9 +24,9 @@ const API_CONFIGURATION_ERROR =
   "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
 const CURRENT_INSTALLER_URL =
-  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.9/The-Platform-CBT-Setup-1.0.9-unsigned.exe";
+  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.10/The-Platform-CBT-Setup-1.0.10-unsigned.exe";
 const installerDownloadUrl = (() => {
-  const value = configuredInstallerUrl?.match(/(?:^|[/_-])1\.0\.[0-8](?:[/_.-]|$)/)
+  const value = configuredInstallerUrl?.match(/(?:^|[/_-])1\.0\.(?:[0-9]|10)(?:[/_.-]|$)/)
     ? CURRENT_INSTALLER_URL
     : configuredInstallerUrl || CURRENT_INSTALLER_URL;
   if (value.startsWith("/")) return value;

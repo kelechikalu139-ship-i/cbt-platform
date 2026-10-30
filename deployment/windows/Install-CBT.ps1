@@ -128,15 +128,30 @@ function Write-InstallationConfig {
   return $dbPassword
 }
 
-function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
-  $serviceQuery = (& sc.exe qc $ServiceName 2>&1 | Out-String)
-  if ($LASTEXITCODE -ne 0) { throw 'The MariaDB service was not found. Install MariaDB before continuing.' }
-  $imageMatch = [regex]::Match($serviceQuery, '(?im)BINARY_PATH_NAME:\s*(.+)$')
-  if (-not $imageMatch.Success) { throw "Could not read the $ServiceName service executable path." }
-  $defaultsMatch = [regex]::Match($imageMatch.Groups[1].Value, '--defaults-file=(?:"([^"]+)"|(\S+))')
-  if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
-  $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value }
+function Get-MariaDbServiceImage([string] $ServiceName) {
+  $serviceInfo = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
+  if (-not $serviceInfo) { throw "The $ServiceName service was not found." }
+  $imagePath = [string]$serviceInfo.PathName
+  if ([string]::IsNullOrWhiteSpace($imagePath)) { throw "Could not read the $ServiceName service executable path." }
+  return $imagePath.Trim()
+}
+
+function Get-MariaDbIniPath([string] $ServiceName) {
+  $imagePath = Get-MariaDbServiceImage $ServiceName
+  $defaultsMatch = [regex]::Match($imagePath, '(?:--defaults-file=|\bdefaults-file=)(?:"([^"]+)"|(\S+))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if (-not $defaultsMatch.Success) {
+    throw "The $ServiceName service does not identify its MariaDB configuration file."
+  }
+  $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value.Trim('"') }
   if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file for $ServiceName." }
+  return $iniPath
+}
+
+function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
+  $imagePath = Get-MariaDbServiceImage $ServiceName
+  $defaultsMatch = [regex]::Match($imagePath, '(?:--defaults-file=|\bdefaults-file=)(?:"([^"]+)"|(\S+))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
+  $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value.Trim('"') }
   $databaseDataRoot = Join-Path $dataRoot 'database'
   if ([IO.Path]::GetFullPath($iniPath) -ine [IO.Path]::GetFullPath((Join-Path $databaseDataRoot 'my.ini'))) {
     throw "The $ServiceName service does not use the dedicated CBT database directory. Setup will not modify its configuration."
@@ -176,14 +191,7 @@ function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
 }
 
 function Get-MariaDbPort([string] $ServiceName) {
-  $serviceQuery = (& sc.exe qc $ServiceName 2>&1 | Out-String)
-  if ($LASTEXITCODE -ne 0) { throw "Could not read the $ServiceName service configuration." }
-  $imageMatch = [regex]::Match($serviceQuery, '(?im)BINARY_PATH_NAME:\s*(.+)$')
-  if (-not $imageMatch.Success) { throw "Could not read the $ServiceName service executable path." }
-  $defaultsMatch = [regex]::Match($imageMatch.Groups[1].Value, '--defaults-file=(?:"([^"]+)"|(\S+))')
-  if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
-  $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value }
-  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file for $ServiceName." }
+  $iniPath = Get-MariaDbIniPath $ServiceName
   $section = [regex]::Match([IO.File]::ReadAllText($iniPath), '(?ims)^\[mysqld\][ \t]*\r?\n(.*?)(?=^\[|\z)')
   if (-not $section.Success) { throw "Could not parse the [mysqld] section in $iniPath." }
   $portMatch = [regex]::Match($section.Groups[1].Value, '(?im)^[ \t]*port[ \t]*=[ \t]*(\d+)[ \t]*$')
