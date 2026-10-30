@@ -75,7 +75,7 @@ function New-RandomHex([int] $ByteCount) {
   $bytes = [byte[]]::new($ByteCount)
   $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
   try { $generator.GetBytes($bytes) } finally { $generator.Dispose() }
-  return [Convert]::ToHexString($bytes).ToLowerInvariant()
+  return ([BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
 }
 
 function Write-InstallationConfig {
