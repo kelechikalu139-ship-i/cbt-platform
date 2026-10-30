@@ -152,15 +152,15 @@ function Set-MariaDbLoopback([string] $ServiceName, [int] $Port) {
   $defaultsMatch = [regex]::Match($imagePath, '(?:--defaults-file=|\bdefaults-file=)(?:"([^"]+)"|(\S+))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
   if (-not $defaultsMatch.Success) { throw "The $ServiceName service does not identify its MariaDB configuration file." }
   $iniPath = if ($defaultsMatch.Groups[1].Success) { $defaultsMatch.Groups[1].Value } else { $defaultsMatch.Groups[2].Value.Trim('"') }
+  if (-not (Test-Path -LiteralPath $iniPath -PathType Leaf)) { throw "Could not find the MariaDB configuration file at $iniPath." }
   $databaseDataRoot = Join-Path $dataRoot 'database'
-  if ([IO.Path]::GetFullPath($iniPath) -ine [IO.Path]::GetFullPath((Join-Path $databaseDataRoot 'my.ini'))) {
-    throw "The $ServiceName service does not use the dedicated CBT database directory. Setup will not modify its configuration."
-  }
   $serviceInfo = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction Stop
   $serviceAccount = [string]$serviceInfo.StartName
   if ($serviceAccount -and $serviceAccount -notin @('LocalSystem', 'NT AUTHORITY\SYSTEM')) {
     Grant-ServiceAccountAccess $dataRoot $serviceAccount ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
-    Grant-ServiceAccountAccess $databaseDataRoot $serviceAccount ([Security.AccessControl.FileSystemRights]::Modify)
+    if (Test-Path -LiteralPath $databaseDataRoot) {
+      Grant-ServiceAccountAccess $databaseDataRoot $serviceAccount ([Security.AccessControl.FileSystemRights]::Modify)
+    }
   }
 
   $content = [IO.File]::ReadAllText($iniPath)
