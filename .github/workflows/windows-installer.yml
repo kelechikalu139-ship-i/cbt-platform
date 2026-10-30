@@ -45,6 +45,7 @@ jobs:
         env:
           CBT_LICENSE_PUBLIC_KEY_B64: ${{ secrets.CBT_LICENSE_PUBLIC_KEY_B64 }}
           CBT_LICENSE_API_URL: ${{ secrets.CBT_LICENSE_API_URL }}
+          DATABASE_URL: mysql://cbt_build:cbt_build@127.0.0.1:3306/cbt_system
         run: |
           if (-not $env:CBT_LICENSE_PUBLIC_KEY_B64) { throw "Missing CBT_LICENSE_PUBLIC_KEY_B64 repository secret." }
           if (-not $env:CBT_LICENSE_API_URL) { throw "Missing CBT_LICENSE_API_URL repository secret." }
