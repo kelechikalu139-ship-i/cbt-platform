@@ -75,5 +75,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $installer = "deployment/windows/build/$env:CBT_VERSION/The-Platform-CBT-Setup-$env:CBT_VERSION-unsigned.exe"
-          gh release create "v$env:CBT_VERSION" $installer --repo "${{ github.repository }}" --title "The Platform CBT $env:CBT_VERSION" --notes "Fixed Windows installer provisioning."
+          $installer = "deployment/windows/build/$env:CBT_VERSION/The-Platform-CBT-Setup-$env:CBT_VERSION.exe"
+          $unsignedInstaller = "deployment/windows/build/$env:CBT_VERSION/The-Platform-CBT-Setup-$env:CBT_VERSION-unsigned.exe"
+          Copy-Item $installer $unsignedInstaller
+          gh release create "v$env:CBT_VERSION" $unsignedInstaller --repo "${{ github.repository }}" --title "The Platform CBT $env:CBT_VERSION" --notes "Fixed Windows installer provisioning."
