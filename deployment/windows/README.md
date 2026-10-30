@@ -41,7 +41,9 @@ $env:CBT_RELEASE_VERSION = '1.0.0'
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" deployment\windows\CBT-Platform.iss
 ```
 
-The output is `deployment/windows/build/<version>/The-Platform-CBT-Setup-<version>-unsigned.exe`. The current project does not include a code-signing certificate; sign the executable with the company Authenticode certificate and timestamp service before sending it to schools. Never distribute the `-unsigned.exe` as a production release.
+The default output is `deployment/windows/build/<version>/The-Platform-CBT-Setup-<version>.exe`, and it is usable without a code-signing certificate for trusted internal school deployments. Windows SmartScreen and endpoint protection may still require an administrator to approve a new unsigned executable; code signing is recommended for public commercial distribution.
+
+If an older certificate-free build names the executable `*-unsigned.exe`, it contains the same unsigned code. Downloading and running only the installer generated from this repository's pinned source and checksum provides the recommended certificate-free deployment path.
 
 ## First installation
 

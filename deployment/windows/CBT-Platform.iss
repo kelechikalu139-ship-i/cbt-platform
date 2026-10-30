@@ -23,15 +23,16 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-Compression=lzma2/ultra64
-SolidCompression=yes
+Compression=lzma2/fast
+SolidCompression=no
 OutputDir={#ScriptDir}\build\{#AppVersion}
-OutputBaseFilename=The-Platform-CBT-Setup-{#AppVersion}-unsigned
+OutputBaseFilename=The-Platform-CBT-Setup-{#AppVersion}
 UninstallDisplayIcon={app}\runtime\node\node.exe
 SetupLogging=yes
 Uninstallable=yes
 CloseApplications=no
 RestartIfNeededByRun=no
+SetupMutex=ThePlatformCbtInstallerMutex
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
