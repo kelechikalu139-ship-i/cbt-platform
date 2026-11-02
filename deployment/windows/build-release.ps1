@@ -87,6 +87,7 @@ try {
   Copy-Item -LiteralPath 'server\prisma' -Destination (Join-Path $serverRoot 'prisma') -Recurse
   Copy-Item -LiteralPath 'server\prisma.config.ts' -Destination (Join-Path $serverRoot 'prisma.config.ts')
   Copy-Item -LiteralPath 'server\scripts\bootstrap-installation.mjs' -Destination (Join-Path $serverRoot 'bootstrap-installation.mjs')
+  Copy-Item -LiteralPath 'server\scripts\reset-admin-password.mjs' -Destination (Join-Path $serverRoot 'reset-admin-password.mjs')
   Copy-Item -Path 'apps\web\dist\*' -Destination $studentPublicRoot -Recurse
   Copy-Item -Path 'apps\admin\dist\*' -Destination $adminPublicRoot -Recurse
 

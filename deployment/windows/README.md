@@ -49,6 +49,21 @@ If an older certificate-free build names the executable `*-unsigned.exe`, it con
 
 Run the setup as a Windows administrator. The installer selects and records a free local TCP port from **3307–3399**. If no MariaDB Windows service exists, the bundled MariaDB MSI opens its setup UI; keep the instance service name **CBTPlatformMariaDB** and the selected port, and set a strong root password. If exactly one compatible MariaDB service already exists, the installer uses its MariaDB instance utility to create a separate `CBTPlatformMariaDB` service and data directory on the selected port; it does not rerun or modify the existing service. If the existing database layout is ambiguous or unsupported, setup stops rather than guessing. This keeps the CBT database separate from existing MariaDB or Docker databases (including Docker's common host port 3306). The provisioning step securely prompts for the CBT database root password, then asks for the first staff email/name and a unique password of at least 12 characters. Credentials are passed to the bootstrap process through standard input and saved configuration is restricted to Administrators, SYSTEM, and the relevant service accounts. Provisioning failures are written to `%ProgramData%\The Platform CBT\logs\installer-provisioning.log`.
 
+### Recover a forgotten administrator password
+
+Run PowerShell as Administrator on the CBT server. Pipe a JSON object to the installed recovery utility; the utility updates an existing super-administrator account and clears its lockout:
+
+```powershell
+'{"email":"admin@example.edu","password":"A-new-strong-password-12+"}' | & "$env:ProgramFiles\The Platform CBT\runtime\node\node.exe" "$env:ProgramFiles\The Platform CBT\server\reset-admin-password.mjs"
+```
+
+Include `serverRoot` in the JSON only when the installed server is not the current working directory:
+
+```powershell
+'{"serverRoot":"C:\\Program Files\\The Platform CBT\\server","email":"admin@example.edu","password":"A-new-strong-password-12+"}' |
+  & "$env:ProgramFiles\The Platform CBT\runtime\node\node.exe" "$env:ProgramFiles\The Platform CBT\server\reset-admin-password.mjs"
+```
+
 After installation:
 
 - Staff sign in at `http://<server-LAN-address>:5000/admin/login`.
