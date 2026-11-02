@@ -30,7 +30,7 @@ import {
  * `./admin.api` directly.
  */
 
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 const pick = <T>(mocked: T, real: T): T => (USE_MOCK ? mocked : real)
 
@@ -62,8 +62,8 @@ export const authApi = pick(
   {
     me: () => mocks.mockUsersApi.me(),
     login: async (identifier: string, password: string): Promise<LoginResponse> => {
-      if (!identifier.trim() || !password) {
-        throw new Error('Enter an email address and password.')
+      if (identifier.trim().toLowerCase() !== 'admin@school.local' || password !== 'Admin@12345') {
+        throw new Error('Invalid email or password')
       }
       return {
         user: await mocks.mockUsersApi.me(),
@@ -79,8 +79,8 @@ export const authApi = pick(
       firstName: string
       lastName: string
     }): Promise<LoginResponse> => {
-      if (!payload.email.trim() || !payload.password) {
-        throw new Error('Enter an email address and password.')
+      if (payload.email.trim().toLowerCase() !== 'admin@school.local' || payload.password !== 'Admin@12345') {
+        throw new Error('Invalid email or password')
       }
       return {
         user: await mocks.mockUsersApi.me(),

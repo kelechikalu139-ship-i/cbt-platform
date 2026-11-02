@@ -58,8 +58,9 @@ export const uploadLogo = multer({
 }).single('logo')
 
 /** Public URL under which an uploaded file is served, relative to the API origin. */
-export function uploadUrl(filename: string): string {
-  return `/api/v1/uploads/${encodeURIComponent(filename)}`
+export function uploadUrl(filename: string, origin?: string): string {
+  const path = `/api/v1/uploads/${encodeURIComponent(filename)}`
+  return origin ? `${origin.replace(/\/+$/, '')}${path}` : path
 }
 
 /** Parse the filename stored at the end of a public upload URL, if any. */

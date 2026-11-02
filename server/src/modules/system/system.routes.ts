@@ -132,7 +132,7 @@ systemRouter.get(
  */
 brandingRouter.get(
   '/',
-  asyncHandler(async (_req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     let settings
     try {
       settings = await loadSettings()
@@ -142,11 +142,15 @@ brandingRouter.get(
       // the student app can still render without a 500.
       settings = DEFAULTS
     }
+    const logoUrl = settings.logoUrl as string | null
+    const publicLogoUrl = logoUrl
+      ? new URL(logoUrl, `${req.protocol}://${req.get('host')}`).toString()
+      : null
     sendData(res, {
       schoolName: settings.schoolName as string,
       schoolShortName: settings.schoolShortName as string,
       primaryColor: settings.primaryColor as string | null,
-      logoUrl: settings.logoUrl as string | null,
+      logoUrl: publicLogoUrl,
     })
   }),
 )
@@ -493,7 +497,8 @@ systemRouter.post(
     if (!file) {
       throw ApiError.badRequest('No logo file was uploaded')
     }
-    sendData(res, { logoUrl: uploadUrl(file.filename) }, 201)
+    const origin = `${req.protocol}://${req.get('host')}`
+    sendData(res, { logoUrl: uploadUrl(file.filename, origin) }, 201)
   }),
 )
 

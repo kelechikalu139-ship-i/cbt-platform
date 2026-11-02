@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import {
   Badge,
   Button,
+  BarChart,
   DataTable,
   ErrorState,
   FilterSelect,
@@ -13,7 +14,6 @@ import {
   Panel,
   PanelBody,
   PanelHeader,
-  PhaseNotice,
   ResultCount,
   SearchBar,
   StatusBadge,
@@ -44,6 +44,9 @@ interface ResultsPageProps {
       attempts: number
       passRate: number
     }>
+    scoreBands?: Array<{ band: string; count: number }>
+    studentInsights?: Array<{ studentId: string; studentName: string; averageScore: number; attempts: number; passRate: number; status: 'AT_RISK' | 'WATCH' | 'ON_TRACK' }>
+    examinationPerformance?: Array<{ examId: string; examName: string; averageScore: number; attempts: number; passRate: number }>
   }
   meta: { page: number; pageSize: number; totalItems: number; totalPages: number }
   loading?: boolean
@@ -258,11 +261,6 @@ export function ResultsPage({
         }
       />
 
-      <PhaseNotice phase="Phase 9 — Results and Reports">
-        Per-student analytics, question analysis, PDF and CSV export arrive with the reporting
-        phase. The figures below are already server-computed in the mock layer.
-      </PhaseNotice>
-
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total Results" value={summary.totalResults} icon={FileText} tone="brand" />
         <StatCard
@@ -274,6 +272,38 @@ export function ResultsPage({
         <StatCard label="Pass Rate" value={`${summary.passRate}%`} icon={FileText} tone="emerald" />
         <StatCard label="Failed" value={summary.failed} icon={FileText} tone="amber" />
       </div>
+
+      {(summary.scoreBands?.length || summary.examinationPerformance?.length) ? (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Panel>
+            <PanelHeader title="Score distribution" description="Candidate concentration by performance band" />
+            <PanelBody>
+              <BarChart
+                height={180}
+                primaryLabel="Candidates"
+                secondaryLabel="Candidates"
+                data={(summary.scoreBands ?? []).map((item) => ({
+                  label: item.band.replace(/ \(.*/, ''),
+                  value: item.count,
+                  secondary: item.count,
+                }))}
+              />
+            </PanelBody>
+          </Panel>
+          <Panel>
+            <PanelHeader title="Examination outcomes" description="Average score and submission volume by examination" />
+            <PanelBody>
+              <HorizontalBarList
+                items={(summary.examinationPerformance ?? []).slice(0, 8).map((exam) => ({
+                  label: exam.examName,
+                  value: Math.round(exam.averageScore),
+                  meta: `${exam.attempts} attempts · ${exam.passRate}% pass rate`,
+                }))}
+              />
+            </PanelBody>
+          </Panel>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Panel>
@@ -333,6 +363,34 @@ export function ResultsPage({
           </PanelBody>
         </Panel>
       </div>
+
+      {summary.studentInsights?.length ? (
+        <Panel>
+          <PanelHeader
+            title="Student intervention list"
+            description="Prioritized by current average score so management can act early"
+          />
+          <PanelBody className="space-y-2">
+            {[...summary.studentInsights]
+              .sort((a, b) => a.averageScore - b.averageScore)
+              .slice(0, 10)
+              .map((student) => (
+                <div key={student.studentId} className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{student.studentName}</p>
+                    <p className="text-xs text-slate-500">{student.attempts} attempts · {student.passRate}% pass rate</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-slate-700">{student.averageScore}%</span>
+                    <Badge tone={student.status === 'AT_RISK' ? 'danger' : student.status === 'WATCH' ? 'warning' : 'success'}>
+                      {student.status === 'AT_RISK' ? 'At risk' : student.status === 'WATCH' ? 'Watch' : 'On track'}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+          </PanelBody>
+        </Panel>
+      ) : null}
 
       <Panel>
         <Toolbar>

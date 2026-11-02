@@ -149,6 +149,9 @@ export async function resultsSummary(): Promise<{
     attempts: number
     passRate: number
   }>
+  scoreBands: Array<{ band: string; count: number }>
+  studentInsights: Array<{ studentId: string; studentName: string; averageScore: number; attempts: number; passRate: number; status: 'AT_RISK' | 'WATCH' | 'ON_TRACK' }>
+  examinationPerformance: Array<{ examId: string; examName: string; averageScore: number; attempts: number; passRate: number }>
 }> {
   const [rows, totalItems] = await Promise.all([
     prisma.result.findMany({ select: resultSelect }),
@@ -166,6 +169,38 @@ export async function resultsSummary(): Promise<{
         ) / 10
       : 0
   const passRate = totalResults > 0 ? Math.round((passed / totalResults) * 1000) / 10 : 0
+
+  const scoreBands = [
+    { band: 'Excellent (70-100%)', min: 70, max: 100 },
+    { band: 'Good (60-69%)', min: 60, max: 69.999 },
+    { band: 'Average (50-59%)', min: 50, max: 59.999 },
+    { band: 'At risk (40-49%)', min: 40, max: 49.999 },
+    { band: 'Critical (<40%)', min: 0, max: 39.999 },
+  ].map(({ band, min, max }) => ({
+    band,
+    count: rows.filter((row) => Number(row.percentage) >= min && Number(row.percentage) <= max).length,
+  }))
+
+  const studentMap = new Map<string, { studentName: string; scores: number[]; passed: number }>()
+  for (const row of rows) {
+    const student = row.student
+    const entry = studentMap.get(student.id) ?? { studentName: `${student.firstName} ${student.lastName}`.trim(), scores: [], passed: 0 }
+    entry.scores.push(Number(row.percentage))
+    if (row.passed) entry.passed += 1
+    studentMap.set(student.id, entry)
+  }
+  const studentInsights = [...studentMap.entries()].map(([studentId, entry]) => {
+    const averageScore = entry.scores.reduce((sum, score) => sum + score, 0) / entry.scores.length
+    const passRate = Math.round((entry.passed / entry.scores.length) * 1000) / 10
+    return {
+      studentId,
+      studentName: entry.studentName,
+      averageScore: Math.round(averageScore * 10) / 10,
+      attempts: entry.scores.length,
+      passRate,
+      status: (averageScore < 40 || passRate < 40 ? 'AT_RISK' : averageScore < 50 || passRate < 60 ? 'WATCH' : 'ON_TRACK') as 'AT_RISK' | 'WATCH' | 'ON_TRACK',
+    }
+  }).sort((a, b) => a.averageScore - b.averageScore)
 
   const gradeDistribution = ['A', 'B', 'C', 'D', 'E', 'F'].map((grade) => ({
     grade,
@@ -231,6 +266,22 @@ export async function resultsSummary(): Promise<{
     passRate: entry.attempts > 0 ? Math.round((entry.passed / entry.attempts) * 1000) / 10 : 0,
   }))
 
+  const examinationPerformance = exams
+    .filter((exam) => exam.results.length > 0)
+    .map((exam) => {
+      const attempts = exam.results.length
+      const averageScore = exam.results.reduce((sum, result) => sum + Number(result.percentage), 0) / attempts
+      const passedCount = exam.results.filter((result) => result.passed).length
+      return {
+        examId: exam.id,
+        examName: exam.title,
+        averageScore: Math.round(averageScore * 10) / 10,
+        attempts,
+        passRate: Math.round((passedCount / attempts) * 1000) / 10,
+      }
+    })
+    .sort((a, b) => b.averageScore - a.averageScore)
+
   return {
     totalResults,
     passed,
@@ -239,6 +290,9 @@ export async function resultsSummary(): Promise<{
     passRate,
     gradeDistribution,
     subjectPerformance,
+    scoreBands,
+    studentInsights,
+    examinationPerformance,
   }
 }
 

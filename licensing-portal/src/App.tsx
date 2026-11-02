@@ -23,12 +23,11 @@ const API = configuredApiUrl
 const API_CONFIGURATION_ERROR =
   "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
-const CURRENT_INSTALLER_URL =
-  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.15/The-Platform-CBT-Setup-1.0.15-unsigned.exe";
-const installerDownloadUrl = (() => {
-  const value = configuredInstallerUrl?.match(/(?:^|[/_-])1\.0\.(?:[0-9]|1[0-5])(?:[/_.-]|$)/)
-    ? CURRENT_INSTALLER_URL
-    : configuredInstallerUrl || CURRENT_INSTALLER_URL;
+const FALLBACK_INSTALLER_URL =
+  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/latest/download/The-Platform-CBT-Setup-latest.exe";
+
+function normalizeDownloadUrl(value: string | undefined): string | null {
+  if (!value) return null;
   if (value.startsWith("/")) return value;
   try {
     const url = new URL(value);
@@ -36,7 +35,7 @@ const installerDownloadUrl = (() => {
   } catch {
     return null;
   }
-})();
+}
 type Licence = {
   id: string;
   institution_id: string;
@@ -115,6 +114,9 @@ export default function App() {
     [busy, setBusy] = useState(false),
     [loginBusy, setLoginBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
+    normalizeDownloadUrl(configuredInstallerUrl || FALLBACK_INSTALLER_URL),
+  );
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
     [issued, setIssued] = useState<any>(null);
@@ -136,6 +138,23 @@ export default function App() {
       "backup-restore",
     ],
   });
+  useEffect(() => {
+    if (configuredInstallerUrl) return;
+    let cancelled = false;
+    void fetch("https://api.github.com/repos/kelechikalu139-ship-i/cbt-platform/releases/latest")
+      .then(async (response) => {
+        if (!response.ok) return;
+        const release = await response.json() as { assets?: Array<{ browser_download_url?: string; name?: string }> };
+        const installer = release.assets?.find((asset) =>
+          /cbt.*setup.*\.exe$/i.test(asset.name ?? "") && !/\.sha256$/i.test(asset.name ?? ""),
+        );
+        const resolved = normalizeDownloadUrl(installer?.browser_download_url);
+        if (!cancelled && resolved) setInstallerDownloadUrl(resolved);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   async function request(path: string, opts: RequestInit = {}, authToken = token) {
     if (!API) throw new Error(API_CONFIGURATION_ERROR);
     const r = await fetch(new URL(path, `${API}/`), {
