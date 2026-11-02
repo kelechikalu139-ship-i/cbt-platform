@@ -115,7 +115,7 @@ export default function App() {
     [loginBusy, setLoginBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
-    normalizeDownloadUrl(configuredInstallerUrl || FALLBACK_INSTALLER_URL),
+    normalizeDownloadUrl(FALLBACK_INSTALLER_URL),
   );
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
@@ -139,7 +139,6 @@ export default function App() {
     ],
   });
   useEffect(() => {
-    if (configuredInstallerUrl) return;
     let cancelled = false;
     void fetch("https://api.github.com/repos/kelechikalu139-ship-i/cbt-platform/releases/latest")
       .then(async (response) => {
@@ -151,7 +150,10 @@ export default function App() {
         const resolved = normalizeDownloadUrl(installer?.browser_download_url);
         if (!cancelled && resolved) setInstallerDownloadUrl(resolved);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        const fallback = normalizeDownloadUrl(configuredInstallerUrl || FALLBACK_INSTALLER_URL)
+        if (!cancelled && fallback) setInstallerDownloadUrl(fallback)
+      });
     return () => { cancelled = true; };
   }, []);
 
