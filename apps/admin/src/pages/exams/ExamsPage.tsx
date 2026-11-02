@@ -319,7 +319,7 @@ export function ExamsPage({
             cell are stopped here. The stop sits on the wrapper
             (not the trigger button) so the Dropdown's own toggle
             still receives the event and opens the menu. */
-        <div onClick={(ev) => ev.stopPropagation()}>
+        <div>
           <Dropdown
             align="right"
             trigger={

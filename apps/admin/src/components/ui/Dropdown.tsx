@@ -18,9 +18,17 @@ export function Dropdown({ trigger, children, align = 'right', className }: Drop
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
-      <div onClick={() => setOpen((v) => !v)}>{trigger}</div>
+      <div
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((value) => !value)
+        }}
+      >
+        {trigger}
+      </div>
       {open && (
         <div
+          onClick={(event) => event.stopPropagation()}
           className={cn(
             'absolute z-30 mt-1.5 min-w-[13rem] animate-slide-up overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-pop',
             align === 'right' ? 'right-0' : 'left-0',

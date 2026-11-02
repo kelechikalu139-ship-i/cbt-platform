@@ -55,6 +55,53 @@ export const ExamTakePage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [tabLocked, setTabLocked] = useState(false)
+  const tabInstanceId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`)
+
+  useEffect(() => {
+    if (!id) return
+    const storageKey = `cbt-active-exam-tab:${id}`
+    const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`cbt-exam-tab:${id}`)
+    let leaseTimer: number | undefined
+
+    const claim = () => {
+      const instance = tabInstanceId.current
+      const current = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as { id?: string; expiresAt?: number } | null
+      if (current?.id && current.id !== instance && (current.expiresAt ?? 0) > Date.now()) {
+        setTabLocked(true)
+        return false
+      }
+      localStorage.setItem(storageKey, JSON.stringify({ id: instance, expiresAt: Date.now() + 15_000 }))
+      setTabLocked(false)
+      return true
+    }
+
+    const claimNow = () => claim()
+    if (!claimNow()) return
+    leaseTimer = window.setInterval(() => {
+      const owner = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as { id?: string } | null
+      if (owner?.id === tabInstanceId.current) {
+        localStorage.setItem(storageKey, JSON.stringify({ id: tabInstanceId.current, expiresAt: Date.now() + 15_000 }))
+      } else claimNow()
+    }, 5000)
+
+    channel?.addEventListener('message', (event: MessageEvent<{ id?: string }>) => {
+      if (event.data.id !== tabInstanceId.current) setTabLocked(true)
+    })
+    channel?.postMessage({ id: tabInstanceId.current })
+
+    const release = () => {
+      const owner = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as { id?: string } | null
+      if (owner?.id === tabInstanceId.current) localStorage.removeItem(storageKey)
+    }
+    window.addEventListener('beforeunload', release)
+    return () => {
+      release()
+      window.removeEventListener('beforeunload', release)
+      window.clearInterval(leaseTimer)
+      channel?.close()
+    }
+  }, [id])
 
   /* ---------------------------------------------------------------- start */
 
@@ -163,6 +210,22 @@ export const ExamTakePage: React.FC = () => {
 
   /* --------------------------------------------------------------- render */
 
+  if (tabLocked) {
+    return (
+      <div className="mx-auto max-w-lg py-12">
+        <Card>
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900">This examination is open in another tab</h2>
+            <p className="mt-2 text-sm text-gray-600">Close the other examination tab before continuing. Only one tab can answer this paper at a time.</p>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
@@ -188,7 +251,7 @@ export const ExamTakePage: React.FC = () => {
         </Card>
         <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-500">
           <Spinner className="h-4 w-4 text-indigo-600" />
-          Preparing your paper…
+          Preparing your paperï¿½
         </div>
       </div>
     )
@@ -228,13 +291,13 @@ export const ExamTakePage: React.FC = () => {
               <span>
                 Question {currentQ + 1} of {questions.length}
               </span>
-              <span aria-hidden>•</span>
+              <span aria-hidden>ï¿½</span>
               <span className="font-medium text-indigo-600">
                 {answeredCount} answered
               </span>
               {saveState === 'saving' && (
                 <span className="inline-flex items-center gap-1 text-xs text-gray-400">
-                  <Loader2 className="h-3 w-3 animate-spin" /> saving…
+                  <Loader2 className="h-3 w-3 animate-spin" /> savingï¿½
                 </span>
               )}
               {saveState === 'saved' && (
@@ -244,7 +307,7 @@ export const ExamTakePage: React.FC = () => {
               )}
               {saveState === 'error' && (
                 <span className="text-xs text-amber-600">
-                  answer kept locally — not yet saved
+                  answer kept locally ï¿½ not yet saved
                 </span>
               )}
             </div>
@@ -270,7 +333,7 @@ export const ExamTakePage: React.FC = () => {
 
       {locked && submitting && (
         <p className="rounded-lg bg-indigo-50 px-4 py-2.5 text-center text-sm font-medium text-indigo-700">
-          Submitting your answers…
+          Submitting your answersï¿½
         </p>
       )}
       {locked && !submitting && (
@@ -358,7 +421,7 @@ export const ExamTakePage: React.FC = () => {
             rows={4}
             disabled={locked}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500"
-            placeholder="Type your answer…"
+            placeholder="Type your answerï¿½"
           />
         )}
       </Card>
@@ -405,7 +468,7 @@ export const ExamTakePage: React.FC = () => {
               className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
             >
               <AlertTriangle className="h-3.5 w-3.5" />
-              {unanswered.length} unanswered — go to first
+              {unanswered.length} unanswered ï¿½ go to first
             </button>
           )}
         </div>
@@ -483,7 +546,7 @@ export const ExamTakePage: React.FC = () => {
               disabled={submitting}
               className="w-full sm:w-auto"
             >
-              {submitting ? 'Submitting…' : 'Yes, submit now'}
+              {submitting ? 'Submittingï¿½' : 'Yes, submit now'}
             </Button>
           </>
         }
@@ -543,7 +606,7 @@ export const ExamTakePage: React.FC = () => {
               ))}
             </div>
             <p className="mt-2 text-xs text-amber-700">
-              Select a question to go back and answer it, or submit now — unanswered questions
+              Select a question to go back and answer it, or submit now ï¿½ unanswered questions
               score zero.
             </p>
           </div>
@@ -562,7 +625,7 @@ export const ExamTakePage: React.FC = () => {
           <div className="flex items-center gap-3 rounded-xl bg-white px-6 py-5 shadow-xl">
             <Spinner className="h-5 w-5 text-indigo-600" />
             <div>
-              <p className="font-medium text-gray-900">Submitting your answers…</p>
+              <p className="font-medium text-gray-900">Submitting your answersï¿½</p>
               <p className="text-sm text-gray-500">Keep this window open until it completes.</p>
             </div>
           </div>
