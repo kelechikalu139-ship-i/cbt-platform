@@ -334,6 +334,28 @@ export function SettingsPage({
                 description="Registers the CBT service to launch automatically at boot."
               />
             </div>
+            <div className="rounded-md border border-slate-200 px-3 py-2.5">
+              <Toggle
+                checked={form.studentAccessNetworksEnabled ?? false}
+                onChange={(v) => update('studentAccessNetworksEnabled', v)}
+                label="Restrict student sign-in to examination networks"
+                description="Only approved hall IPv4 addresses and CIDR ranges can open student sessions."
+              />
+              <label className="mt-3 mb-1.5 block text-xs font-medium text-slate-700" htmlFor="student-network-ranges">
+                Approved hall networks
+              </label>
+              <textarea
+                id="student-network-ranges"
+                rows={3}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--cb-primary)]"
+                placeholder="192.168.10.0/24, 192.168.20.25"
+                value={(form.studentAccessNetworks ?? []).join(', ') }
+                onChange={(e) => update('studentAccessNetworks', e.target.value.split(',').map((value) => value.trim()).filter(Boolean))}
+              />
+              <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+                Enter IPv4 addresses or CIDR ranges separated by commas. Never enter public internet addresses for a private school hall.
+              </p>
+            </div>
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
               <Toggle
                 checked={form.maintenanceMode}

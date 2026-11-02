@@ -234,6 +234,8 @@ const settingsSchema = z.object({
   startOnWindowsBoot: z.boolean().optional(),
   sessionTimeoutMinutes: z.number().int().min(5).max(480).optional(),
   maintenanceMode: z.boolean().optional(),
+  studentAccessNetworksEnabled: z.boolean().optional(),
+  studentAccessNetworks: z.array(z.string().trim().min(1).max(63)).max(50).optional(),
 })
 
 const DEFAULTS: Record<string, unknown> = {
@@ -250,6 +252,8 @@ const DEFAULTS: Record<string, unknown> = {
   startOnWindowsBoot: false,
   sessionTimeoutMinutes: 30,
   maintenanceMode: false,
+  studentAccessNetworksEnabled: false,
+  studentAccessNetworks: [],
 }
 
 async function loadSettings() {

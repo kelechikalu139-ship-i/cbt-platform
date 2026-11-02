@@ -816,6 +816,8 @@ export interface SystemSettings {
   startOnWindowsBoot: boolean
   sessionTimeoutMinutes: number
   maintenanceMode: boolean
+  studentAccessNetworksEnabled: boolean
+  studentAccessNetworks: string[]
 }
 
 /* -------------------------------------------------------------------------- */

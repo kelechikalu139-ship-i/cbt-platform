@@ -604,6 +604,8 @@ export const settings = {
   startOnWindowsBoot: true,
   sessionTimeoutMinutes: 30,
   maintenanceMode: false,
+  studentAccessNetworksEnabled: false,
+  studentAccessNetworks: [],
 }
 
 export const installationId = 'CBT-9F83-2K91-AB73'

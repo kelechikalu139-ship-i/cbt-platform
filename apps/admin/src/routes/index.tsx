@@ -561,4 +561,6 @@ const EMPTY_SETTINGS = {
   startOnWindowsBoot: false,
   sessionTimeoutMinutes: 30,
   maintenanceMode: false,
+  studentAccessNetworksEnabled: false,
+  studentAccessNetworks: [],
 }

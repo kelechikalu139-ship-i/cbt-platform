@@ -34,6 +34,39 @@ import type { Prisma } from '@prisma/client'
 /** Deliberately identical for every failure mode. */
 const GENERIC_CREDENTIAL_ERROR = 'Invalid email or password'
 
+function ipv4ToNumber(ip: string): number | null {
+  const parts = ip.trim().split('.').map(Number)
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null
+  return parts.reduce((value, part) => (value * 256) + part, 0) >>> 0
+}
+
+function ipInCidr(ip: string, cidr: string): boolean {
+  const [network, prefixText] = cidr.trim().split('/')
+  const address = ipv4ToNumber(ip)
+  if (!network) return false
+  const networkAddress = ipv4ToNumber(network)
+  const prefix = prefixText === undefined ? 32 : Number(prefixText)
+  if (address === null || networkAddress === null || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false
+  if (prefix === 0) return true
+  const mask = (0xffffffff << (32 - prefix)) >>> 0
+  return ((address & mask) >>> 0) === ((networkAddress & mask) >>> 0)
+}
+
+async function assertStudentNetworkAllowed(ipAddress?: string | null): Promise<void> {
+  const rows = await prisma.systemSetting.findMany({ where: { key: { in: ['studentAccessNetworksEnabled', 'studentAccessNetworks'] } } })
+  const values = Object.fromEntries(rows.map((row) => {
+    try { return [row.key, JSON.parse(row.value)] } catch { return [row.key, row.value] }
+  }))
+  if (values.studentAccessNetworksEnabled !== true) return
+  const networks: string[] = Array.isArray(values.studentAccessNetworks)
+    ? values.studentAccessNetworks.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter((value) => value.length > 0)
+    : []
+  if (!networks.length) throw new ApiError(403, 'No student hall network is configured', 'STUDENT_NETWORK_NOT_CONFIGURED')
+  if (!ipAddress || !networks.some((network) => ipInCidr(ipAddress, network))) {
+    throw new ApiError(403, 'Sign-in is not allowed from this device or network', 'STUDENT_NETWORK_NOT_ALLOWED')
+  }
+}
+
 /** Consecutive failures before the account is temporarily locked. */
 const MAX_FAILED_ATTEMPTS = 5
 /** Lockout length. Short enough that a legitimate user is not locked out of an exam. */
@@ -482,6 +515,8 @@ export async function studentLogin(
   input: { studentId: string },
   context: RequestContext,
 ): Promise<AuthResult> {
+  await assertStudentNetworkAllowed(context.ipAddress)
+
   // Resolve the candidate first: matric-only sign-in works from the
   // register, so a candidate is never blocked merely because a portal
   // login was never provisioned for them.
