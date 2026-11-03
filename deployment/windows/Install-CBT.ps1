@@ -328,7 +328,11 @@ function Invoke-SetupBootstrap($Credentials, [string] $DatabasePassword) {
   $stdout = $stdoutTask.GetAwaiter().GetResult()
   $stderr = $stderrTask.GetAwaiter().GetResult()
   if ($stdout) { Write-Host $stdout.TrimEnd() }
-  if ($process.ExitCode -ne 0) { throw "Initial database setup failed. $($stderr.Trim())" }
+  if ($process.ExitCode -ne 0) {
+    $details = @($stdout.Trim(), $stderr.Trim()) | Where-Object { $_ } | Join-String -Separator "`n"
+    if (-not $details) { $details = 'No process output was returned.' }
+    throw "Initial database setup failed with exit code $($process.ExitCode).`n$details"
+  }
 }
 
 function Reset-MariaDbRootAuthentication([string] $ServiceName, [string] $RootPassword, [int] $Port) {
