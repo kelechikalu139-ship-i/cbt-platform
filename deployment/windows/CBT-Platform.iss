@@ -274,6 +274,8 @@ begin
   else if ExitCode <> 0 then begin
     ProvisionOutput := '';
     LoadStringFromFile(ProvisionLogPath, ProvisionOutput);
+    if Trim(ProvisionOutput) = '' then
+      LoadStringFromFile(ExpandConstant('{commonappdata}\The Platform CBT\logs\installer-provisioning.log'), ProvisionOutput);
     if Trim(ProvisionOutput) <> '' then
       RaiseException('CBT provisioning failed:'#13#10 + Trim(ProvisionOutput))
     else
