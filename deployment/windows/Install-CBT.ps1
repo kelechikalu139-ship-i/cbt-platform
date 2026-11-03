@@ -435,9 +435,11 @@ if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeM
     if ($service -and $service.Status -ne 'Stopped') { Stop-Service CBTPlatform -Force }
     # Installers 1.0.17 and 1.0.18 can leave a migration recorded as failed.
     # Mark that exact migration rolled back so Prisma can apply the corrected SQL.
-    & $nodeExe (Join-Path $serverRoot 'node_modules\prisma\build\index.js') migrate resolve --rolled-back 20261103140000_add_proctor_snapshots --config (Join-Path $serverRoot 'prisma.config.ts') 2>$null
+    & $nodeExe (Join-Path $serverRoot 'node_modules\prisma\build\index.js') migrate resolve --rolled-back 20261103140000_add_proctor_snapshots --config (Join-Path $serverRoot 'prisma.config.ts')
     & $nodeExe (Join-Path $serverRoot 'node_modules\prisma\build\index.js') migrate deploy --config (Join-Path $serverRoot 'prisma.config.ts')
-    if ($LASTEXITCODE -ne 0) { throw "Database migration failed with exit code $LASTEXITCODE." }
+    if ($LASTEXITCODE -ne 0) {
+      throw "Database migration deploy failed with exit code $LASTEXITCODE. Review the complete provisioning output above."
+    }
     Install-CbtService
   } catch {
     if (Get-Service CBTPlatform -ErrorAction SilentlyContinue) { Start-Service CBTPlatform -ErrorAction SilentlyContinue }
