@@ -316,6 +316,7 @@ export const resultsApi = pick(
     exportCsv: mocks.mockResultsApi.exportCsv,
     summary: () => mocks.mockResultsApi.summary(),
     studentPerformance: mocks.mockResultsApi.studentPerformance,
+    audit: (): Promise<never> => notYet('Answer audit records'),
   },
   realResultsApi,
 )

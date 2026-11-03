@@ -5,7 +5,7 @@ import { asyncHandler } from '../../utils/async-handler.js'
 import { sendData, sendPaginated } from '../../utils/http-response.js'
 import { PERMISSIONS } from '../../constants/permissions.js'
 import { resultsListQuerySchema } from './results.schema.js'
-import { exportResultsCsv, listResults, resultsSummary } from './results.service.js'
+import { examResultAudit, exportResultsCsv, listResults, resultsSummary } from './results.service.js'
 
 /**
  * Results routes (§48).
@@ -33,6 +33,15 @@ resultsRouter.get(
   requirePermission(PERMISSIONS.RESULTS_READ),
   asyncHandler(async (_req: Request, res: Response) => {
     sendData(res, await resultsSummary())
+  }),
+)
+
+/** Immutable-at-review evidence: delivered question, selected response and grading. */
+resultsRouter.get(
+  '/:id/audit',
+  requirePermission(PERMISSIONS.RESULTS_READ),
+  asyncHandler(async (req: Request, res: Response) => {
+    sendData(res, await examResultAudit(String(req.params.id)))
   }),
 )
 

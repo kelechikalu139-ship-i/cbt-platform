@@ -358,6 +358,34 @@ export const realResultsApi = {
   /** One result by id. */
   get: (id: string) => http.get<Result>(`/results/${id}`),
 
+  audit: (id: string) => http.get<{
+    resultId: string
+    examName: string
+    studentName: string
+    admissionNumber: string
+    attemptNumber: number
+    submittedAt: string | null
+    totalQuestions: number
+    marksObtained: number
+    totalMarks: number
+    percentage: number
+    passed: boolean
+    answers: Array<{
+      id: string
+      questionId: string
+      question: string
+      questionType: string
+      possibleMarks: number
+      selectedOption: string | null
+      textAnswer: string | null
+      correctAnswer: string
+      isCorrect: boolean | null
+      marksObtained: number | null
+      answeredAt: string
+      updatedAt: string
+    }>
+  }>(`/results/${id}/audit`),
+
   /** Aggregate performance for one student across every exam they sat. */
   studentPerformance: (studentId: string) =>
     http.get<StudentPerformance>(`/results/students/${studentId}/performance`),

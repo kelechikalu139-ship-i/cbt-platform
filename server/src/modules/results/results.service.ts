@@ -9,6 +9,100 @@ import {
 } from '../../utils/pagination.js'
 import type { ResultsListQuery } from './results.schema.js'
 
+export async function examResultAudit(resultId: string) {
+  const result = await prisma.result.findUnique({
+    where: { id: resultId },
+    select: {
+      id: true,
+      sessionId: true,
+      totalQuestions: true,
+      marksObtained: true,
+      totalMarks: true,
+      percentage: true,
+      passed: true,
+      timeSpentSeconds: true,
+      gradedAt: true,
+      exam: { select: { title: true } },
+      student: { select: { studentId: true, firstName: true, lastName: true, className: true } },
+      session: {
+        select: {
+          startedAt: true,
+          submittedAt: true,
+          expiresAt: true,
+          attemptNumber: true,
+          answers: {
+            orderBy: { answeredAt: 'asc' },
+            select: {
+              id: true,
+              questionId: true,
+              selectedOptionId: true,
+              textAnswer: true,
+              isCorrect: true,
+              marksObtained: true,
+              answeredAt: true,
+              updatedAt: true,
+              question: {
+                select: {
+                  stem: true,
+                  type: true,
+                  points: true,
+                  correctAnswer: true,
+                  options: { orderBy: { sortOrder: 'asc' }, select: { id: true, label: true, text: true } },
+                },
+              },
+              selectedOption: { select: { id: true, label: true, text: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!result) throw new Error('Result not found')
+
+  const answers = result.session.answers.map((answer) => {
+    const selected = answer.selectedOption
+      ?? answer.question.options.find((option) => option.id === answer.selectedOptionId)
+      ?? null
+    return {
+      id: answer.id,
+      questionId: answer.questionId,
+      question: answer.question.stem,
+      questionType: answer.question.type,
+      possibleMarks: Number(answer.question.points),
+      options: answer.question.options.map((option) => ({ id: option.id, label: option.label, text: option.text })),
+      selectedOptionId: answer.selectedOptionId,
+      selectedOption: selected ? `${selected.label}. ${selected.text}` : null,
+      textAnswer: answer.textAnswer,
+      correctAnswer: answer.question.correctAnswer,
+      isCorrect: answer.isCorrect,
+      marksObtained: answer.marksObtained === null ? null : Number(answer.marksObtained),
+      answeredAt: answer.answeredAt.toISOString(),
+      updatedAt: answer.updatedAt.toISOString(),
+    }
+  })
+
+  return {
+    resultId: result.id,
+    sessionId: result.sessionId,
+    examName: result.exam.title,
+    studentName: `${result.student.firstName} ${result.student.lastName}`.trim(),
+    admissionNumber: result.student.studentId,
+    className: result.student.className,
+    attemptNumber: result.session.attemptNumber,
+    startedAt: result.session.startedAt.toISOString(),
+    submittedAt: result.session.submittedAt?.toISOString() ?? null,
+    expiresAt: result.session.expiresAt.toISOString(),
+    gradedAt: result.gradedAt.toISOString(),
+    timeSpentSeconds: result.timeSpentSeconds,
+    totalQuestions: result.totalQuestions,
+    totalMarks: Number(result.totalMarks),
+    marksObtained: Number(result.marksObtained),
+    percentage: Number(result.percentage),
+    passed: result.passed,
+    answers,
+  }
+}
+
 /**
  * Grade boundaries, lowest score inclusive for each grade.
  */

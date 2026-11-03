@@ -59,11 +59,19 @@ type PendingAction =
   | { kind: 'reset-exam'; session: LiveExamSession }
   | { kind: 'extend-time'; session: LiveExamSession; minutes: number }
 
-function CameraFeed({ session }: { session: LiveExamSession }) {
+function CameraFeed({
+  session,
+  nowMs,
+  onAction,
+}: {
+  session: LiveExamSession
+  nowMs: number
+  onAction: (action: PendingAction) => void
+}) {
   const snapshots = useQuery({
     queryKey: ['proctor-snapshots', session.sessionId],
     queryFn: () => examsApi.proctorSnapshots(session.sessionId),
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   })
   const latest = snapshots.data?.[0]
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -105,6 +113,18 @@ function CameraFeed({ session }: { session: LiveExamSession }) {
         description={`${session.admissionNumber} · ${session.examTitle}`}
       />
       <PanelBody>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="rounded-md bg-slate-50 px-2 py-1.5 text-center">
+            <p className="text-2xs text-slate-500">Time remaining</p>
+            <p className="tabular text-sm font-semibold text-slate-800">
+              {countdown(Math.max(0, Math.floor((Date.parse(session.expiresAt) - nowMs) / 1000)))}
+            </p>
+          </div>
+          <div className="rounded-md bg-slate-50 px-2 py-1.5 text-center">
+            <p className="text-2xs text-slate-500">Progress</p>
+            <p className="tabular text-sm font-semibold text-slate-800">{session.answeredCount}/{session.totalQuestions}</p>
+          </div>
+        </div>
         {latest && imageUrl ? (
           <img
             className="aspect-video w-full rounded-md border border-slate-200 bg-black object-contain"
@@ -119,6 +139,11 @@ function CameraFeed({ session }: { session: LiveExamSession }) {
         <p className="mt-2 text-2xs text-slate-500">
           {latest ? `Last snapshot ${new Date(latest.capturedAt).toLocaleTimeString()}` : 'The student camera will appear here when uploading.'}
         </p>
+        <div className="mt-3 flex flex-wrap gap-1">
+          <Button size="sm" variant="outline" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => onAction({ kind: 'extend-time', session, minutes: 10 })}>+10 min</Button>
+          <Button size="sm" variant="ghost" icon={<CircleSlash className="h-3.5 w-3.5" />} onClick={() => onAction({ kind: 'end-attempt', session })}>End</Button>
+          <Button size="sm" variant="ghost" icon={<RotateCcw className="h-3.5 w-3.5" />} onClick={() => onAction({ kind: 'reset-exam', session })}>Reset</Button>
+        </div>
       </PanelBody>
     </Panel>
   )
@@ -422,10 +447,17 @@ export function LiveMonitorPage() {
         <div>
           <div className="mb-3">
             <h2 className="text-sm font-semibold text-slate-800">Candidate camera feeds</h2>
-            <p className="text-xs text-slate-500">Latest uploaded presence snapshot. Refreshes every 30 seconds.</p>
+            <p className="text-xs text-slate-500">Latest uploaded presence snapshot. Camera checks refresh every 5 seconds.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {sessions.map((session) => <CameraFeed key={session.sessionId} session={session} />)}
+            {sessions.map((session) => (
+              <CameraFeed
+                key={session.sessionId}
+                session={session}
+                nowMs={nowMs}
+                onAction={setAction}
+              />
+            ))}
           </div>
         </div>
       )}

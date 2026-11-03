@@ -1,10 +1,12 @@
-import { Download, FileText, Printer } from 'lucide-react'
+import { Download, Eye, FileText, Printer } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Badge,
   Button,
   BarChart,
   DataTable,
+  EmptyState,
   ErrorState,
   FilterSelect,
   HorizontalBarList,
@@ -26,6 +28,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useTableState } from '../../hooks/useTableState'
 import type { Result } from '../../types'
 import { formatDateTime, formatDuration, formatNumber } from '../../utils'
+import { resultsApi } from '../../services'
 
 interface ResultsPageProps {
   results: Result[]
@@ -82,6 +85,12 @@ export function ResultsPage({
   const table = useTableState<{ outcome: string; grade: string }>({ outcome: 'all', grade: 'all' })
   const [search, setSearch] = useState('')
   const [printResult, setPrintResult] = useState<Result | null>(null)
+  const [auditResult, setAuditResult] = useState<Result | null>(null)
+  const audit = useQuery({
+    queryKey: ['result-audit', auditResult?.id],
+    queryFn: () => resultsApi.audit(auditResult!.id),
+    enabled: Boolean(auditResult),
+  })
   const debounced = useDebouncedValue(search, 300)
 
   const visible = useMemo(() => {
@@ -207,20 +216,33 @@ export function ResultsPage({
     {
       key: 'print',
       header: '',
-      width: 'w-20',
+      width: 'w-32',
       align: 'center',
       cell: (r) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Printer className="h-3.5 w-3.5" />}
-          onClick={(e) => {
-            e.stopPropagation()
-            setPrintResult(r)
-          }}
-        >
-          Print
-        </Button>
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Eye className="h-3.5 w-3.5" />}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAuditResult(r)
+            }}
+          >
+            Audit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Printer className="h-3.5 w-3.5" />}
+            onClick={(e) => {
+              e.stopPropagation()
+              setPrintResult(r)
+            }}
+          >
+            Print
+          </Button>
+        </div>
       ),
     },
   ]
@@ -229,6 +251,38 @@ export function ResultsPage({
 
   return (
     <>
+      {auditResult && (
+        <Modal open onClose={() => setAuditResult(null)} title={`Answer audit — ${auditResult.studentName}`} size="lg">
+          {audit.isPending ? (
+            <div className="py-8 text-center text-sm text-slate-500">Loading answer record...</div>
+          ) : audit.error ? (
+            <ErrorState title="Audit unavailable" message="The submitted answer record could not be loaded." />
+          ) : audit.data ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <strong>{audit.data.examName}</strong> — {audit.data.admissionNumber}
+                <span className="block text-xs text-slate-500">Attempt {audit.data.attemptNumber} · Submitted {audit.data.submittedAt ? formatDateTime(audit.data.submittedAt) : '—'}</span>
+              </div>
+              {audit.data.answers.map((answer, index) => (
+                <div key={answer.id} className="rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-slate-800">{index + 1}. {answer.question}</p>
+                    <Badge tone={answer.isCorrect === true ? 'success' : answer.isCorrect === false ? 'danger' : 'neutral'}>
+                      {answer.marksObtained ?? 0}/{answer.possibleMarks}
+                    </Badge>
+                  </div>
+                  <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                    <div><dt className="text-slate-500">Student answer</dt><dd className="font-medium text-slate-800">{answer.selectedOption ?? answer.textAnswer ?? 'No answer submitted'}</dd></div>
+                    <div><dt className="text-slate-500">Recorded correct answer</dt><dd className="font-medium text-slate-800">{answer.correctAnswer}</dd></div>
+                  </dl>
+                  <p className="mt-2 text-2xs text-slate-400">Saved {formatDateTime(answer.answeredAt)}{answer.updatedAt !== answer.answeredAt ? ` · Last updated ${formatDateTime(answer.updatedAt)}` : ''}</p>
+                </div>
+              ))}
+              {audit.data.answers.length === 0 && <EmptyState title="No answers recorded" description="This attempt has no saved question responses." />}
+            </div>
+          ) : null}
+        </Modal>
+      )}
       <div className="space-y-5">
       <PageHeader
         title="Results"
