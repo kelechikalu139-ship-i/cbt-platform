@@ -236,6 +236,8 @@ const settingsSchema = z.object({
   maintenanceMode: z.boolean().optional(),
   studentAccessNetworksEnabled: z.boolean().optional(),
   studentAccessNetworks: z.array(z.string().trim().min(1).max(63)).max(50).optional(),
+  studentAccessDevicesEnabled: z.boolean().optional(),
+  studentAccessDevices: z.array(z.string().trim().min(3).max(200)).max(500).optional(),
 })
 
 const DEFAULTS: Record<string, unknown> = {
@@ -254,6 +256,8 @@ const DEFAULTS: Record<string, unknown> = {
   maintenanceMode: false,
   studentAccessNetworksEnabled: false,
   studentAccessNetworks: [],
+  studentAccessDevicesEnabled: false,
+  studentAccessDevices: [],
 }
 
 async function loadSettings() {

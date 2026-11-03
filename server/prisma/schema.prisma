@@ -336,6 +336,8 @@ model Exam {
   /// Class names this paper is set for, e.g. ["CSC 100 - A", "CSC 100 - B"].
   /// Delivery to specific classes is enforced when sessions open (§55).
   classes      Json?
+  /// Optional explicit matriculation-number allowlist. Empty means class rules apply.
+  candidateIds Json?
 
   /// Minutes. The server owns the clock; the browser only renders it (§28).
   durationMinutes Int

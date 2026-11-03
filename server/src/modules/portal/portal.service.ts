@@ -48,6 +48,7 @@ const examPaperSelect = {
   semester: true,
   session: true,
   classes: true,
+  candidateIds: true,
   durationMinutes: true,
   passPercentage: true,
   maxAttempts: true,
@@ -202,6 +203,10 @@ function targetClasses(exam: ExamPaperRow): string[] {
  */
 function isDeliveredTo(exam: ExamPaperRow, student: StudentRow, now: Date): boolean {
   const classes = targetClasses(exam)
+  const candidateIds = Array.isArray(exam.candidateIds)
+    ? exam.candidateIds.map((value) => String(value).trim().toUpperCase())
+    : []
+  if (candidateIds.length > 0 && !candidateIds.includes(student.studentId.trim().toUpperCase())) return false
   if (
     classes.length > 0 &&
     (student.className === null || !classes.includes(student.className))

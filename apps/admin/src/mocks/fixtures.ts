@@ -606,6 +606,8 @@ export const settings = {
   maintenanceMode: false,
   studentAccessNetworksEnabled: false,
   studentAccessNetworks: [],
+  studentAccessDevicesEnabled: false,
+  studentAccessDevices: [],
 }
 
 export const installationId = 'CBT-9F83-2K91-AB73'

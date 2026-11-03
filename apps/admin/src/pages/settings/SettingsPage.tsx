@@ -356,6 +356,28 @@ export function SettingsPage({
                 Enter IPv4 addresses or CIDR ranges separated by commas. Never enter public internet addresses for a private school hall.
               </p>
             </div>
+            <div className="rounded-md border border-slate-200 px-3 py-2.5">
+              <Toggle
+                checked={form.studentAccessDevicesEnabled ?? false}
+                onChange={(v) => update('studentAccessDevicesEnabled', v)}
+                label="Restrict students to assigned computers"
+                description="Bind a matriculation number to one or more approved workstation IP addresses."
+              />
+              <label className="mt-3 mb-1.5 block text-xs font-medium text-slate-700" htmlFor="student-device-allowlist">
+                Student computer assignments
+              </label>
+              <textarea
+                id="student-device-allowlist"
+                rows={5}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs text-slate-800 outline-none focus:border-[var(--cb-primary)]"
+                placeholder={'STUDENT/2024/001=192.168.10.21\nSTUDENT/2024/002=192.168.10.22'}
+                value={(form.studentAccessDevices ?? []).join('\n')}
+                onChange={(e) => update('studentAccessDevices', e.target.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean))}
+              />
+              <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+                Use one line per student: MATRICULATION NUMBER = IP address (separate multiple IPs with commas).
+              </p>
+            </div>
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
               <Toggle
                 checked={form.maintenanceMode}

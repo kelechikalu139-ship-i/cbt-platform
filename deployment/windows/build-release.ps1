@@ -71,6 +71,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Prisma client generation failed.' }
   npm.cmd run build:server
   if ($LASTEXITCODE -ne 0) { throw 'Server build failed.' }
+  $env:VITE_USE_MOCK = 'false'
   npm.cmd run build:web
   if ($LASTEXITCODE -ne 0) { throw 'Student portal build failed.' }
   $previousBasePath = $env:VITE_BASE_PATH

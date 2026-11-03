@@ -31,6 +31,7 @@ const examSelect = {
   semester: true,
   session: true,
   classes: true,
+  candidateIds: true,
   durationMinutes: true,
   passPercentage: true,
   maxAttempts: true,
@@ -62,6 +63,7 @@ function toDto(row: ExamRow) {
     semester: row.semester,
     session: row.session,
     classes: (row.classes as string[] | null) ?? null,
+    candidateIds: (row.candidateIds as string[] | null) ?? null,
     durationMinutes: row.durationMinutes,
     passPercentage: row.passPercentage.toString(),
     maxAttempts: row.maxAttempts,
@@ -227,6 +229,9 @@ export async function createExam(
         semester: input.semester || null,
         session: input.session || null,
         classes: input.classes?.length ? input.classes : Prisma.DbNull,
+        candidateIds: input.candidateIds?.length
+          ? [...new Set(input.candidateIds.map((id) => id.trim().toUpperCase()))]
+          : Prisma.DbNull,
         durationMinutes: input.durationMinutes,
         passPercentage: new Prisma.Decimal(input.passPercentage),
         maxAttempts: input.maxAttempts,
@@ -280,6 +285,10 @@ function buildExamUpdateData(input: UpdateExamInput): Prisma.ExamUpdateInput {
   if (input.session !== undefined) data.session = input.session || null
   if (input.classes !== undefined)
     data.classes = input.classes.length > 0 ? input.classes : Prisma.DbNull
+  if (input.candidateIds !== undefined)
+    data.candidateIds = input.candidateIds.length > 0
+      ? [...new Set(input.candidateIds.map((id) => id.trim().toUpperCase()))]
+      : Prisma.DbNull
   if (input.durationMinutes !== undefined) data.durationMinutes = input.durationMinutes
   if (input.passPercentage !== undefined) {
     data.passPercentage = new Prisma.Decimal(input.passPercentage)

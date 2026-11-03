@@ -563,4 +563,6 @@ const EMPTY_SETTINGS = {
   maintenanceMode: false,
   studentAccessNetworksEnabled: false,
   studentAccessNetworks: [],
+  studentAccessDevicesEnabled: false,
+  studentAccessDevices: [],
 }

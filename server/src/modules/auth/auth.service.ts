@@ -67,6 +67,28 @@ async function assertStudentNetworkAllowed(ipAddress?: string | null): Promise<v
   }
 }
 
+async function assertStudentDeviceAllowed(studentId: string, ipAddress?: string | null): Promise<void> {
+  const rows = await prisma.systemSetting.findMany({
+    where: { key: { in: ['studentAccessDevicesEnabled', 'studentAccessDevices'] } },
+  })
+  const values = Object.fromEntries(rows.map((row) => {
+    try { return [row.key, JSON.parse(row.value)] } catch { return [row.key, row.value] }
+  }))
+  if (values.studentAccessDevicesEnabled !== true) return
+  const entries: string[] = Array.isArray(values.studentAccessDevices)
+    ? values.studentAccessDevices.filter((value): value is string => typeof value === 'string')
+    : []
+  const studentKey = studentId.trim().toUpperCase()
+  const allowedIps = entries.flatMap((entry) => {
+    const [entryStudent, ...ips] = entry.split('=')
+    return entryStudent?.trim().toUpperCase() === studentKey ? ips.join('=').split(',').map((ip) => ip.trim()) : []
+  })
+  const requestIp = ipAddress?.replace(/^::ffff:/, '')
+  if (!requestIp || !allowedIps.includes(requestIp)) {
+    throw new ApiError(403, 'This computer is not assigned to your student account', 'STUDENT_DEVICE_NOT_ALLOWED')
+  }
+}
+
 /** Consecutive failures before the account is temporarily locked. */
 const MAX_FAILED_ATTEMPTS = 5
 /** Lockout length. Short enough that a legitimate user is not locked out of an exam. */
@@ -516,6 +538,7 @@ export async function studentLogin(
   context: RequestContext,
 ): Promise<AuthResult> {
   await assertStudentNetworkAllowed(context.ipAddress)
+  await assertStudentDeviceAllowed(input.studentId, context.ipAddress)
 
   // Resolve the candidate first: matric-only sign-in works from the
   // register, so a candidate is never blocked merely because a portal

@@ -123,6 +123,7 @@ export function ExamEditor({
   const [session, setSession] = useState('')
   const [selectedClasses, setSelectedClasses] = useState<string[]>([])
   const [customClass, setCustomClass] = useState('')
+  const [candidateIdsText, setCandidateIdsText] = useState('')
 
   const [sourceMode, setSourceMode] = useState<SourceMode>('pool')
   const [poolCategoryIds, setPoolCategoryIds] = useState<string[]>([])
@@ -180,6 +181,7 @@ export function ExamEditor({
       setSemester(source.semester ?? '')
       setSession(source.session ?? '')
       setSelectedClasses(source.classes ?? [])
+      setCandidateIdsText((source.candidateIds ?? []).join(', '))
       setDurationMinutes(source.durationMinutes)
       setPassPercentage(toDecimalNumber(source.passPercentage) ?? 50)
       setMaxAttempts(source.maxAttempts)
@@ -291,6 +293,7 @@ export function ExamEditor({
       semester,
       session: session.trim() || undefined,
       classes: selectedClasses,
+      candidateIds: candidateIdsText.split(/[,\n]/).map((id) => id.trim()).filter(Boolean),
       durationMinutes,
       passPercentage,
       maxAttempts,
@@ -525,6 +528,22 @@ export function ExamEditor({
                   {selectedClasses.length === 0 &&
                     ' No classes selected — the paper is not tied to a specific class.'}
                 </p>
+                <div className="mt-4">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-700" htmlFor="exam-candidates">
+                    Individual student allowlist
+                  </label>
+                  <textarea
+                    id="exam-candidates"
+                    rows={3}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs text-slate-800 outline-none focus:border-[var(--cb-primary)]"
+                    placeholder="CSC/2024/0001, CSC/2024/0002"
+                    value={candidateIdsText}
+                    onChange={(event) => setCandidateIdsText(event.target.value.replace(/\r?\n/g, ', '))}
+                  />
+                  <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+                    When filled, only these registered matriculation numbers can see this examination. Leave empty to use class rules only.
+                  </p>
+                </div>
               </div>
             </div>
           </PanelBody>

@@ -471,6 +471,7 @@ export interface Exam {
   session: string | null
   /** Class names this paper is set for. */
   classes?: string[] | null
+  candidateIds?: string[] | null
   /** Server-owned clock; the browser only renders a countdown. */
   durationMinutes: number
   /** Percentage required to pass. A `DecimalString`: `"50"`, not `50`. */
@@ -562,6 +563,7 @@ export interface ExamInput {
   session?: string
   /** Class names this paper is set for. */
   classes?: string[]
+  candidateIds?: string[]
   durationMinutes: number
   passPercentage: number
   maxAttempts: number
@@ -818,6 +820,8 @@ export interface SystemSettings {
   maintenanceMode: boolean
   studentAccessNetworksEnabled: boolean
   studentAccessNetworks: string[]
+  studentAccessDevicesEnabled: boolean
+  studentAccessDevices: string[]
 }
 
 /* -------------------------------------------------------------------------- */
@@ -959,4 +963,3 @@ export interface BackupInfo {
   sizeBytes: number
   rowCounts: Record<string, number>
 }
-

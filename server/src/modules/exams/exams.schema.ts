@@ -65,6 +65,7 @@ const baseExamFields = {
     .or(z.literal('')),
   /** Class names this paper is set for, e.g. ["CSC 100 - A"]. */
   classes: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  candidateIds: z.array(z.string().trim().min(1).max(50)).max(500).optional(),
   durationMinutes: z.coerce
     .number()
     .int()

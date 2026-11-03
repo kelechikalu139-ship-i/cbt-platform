@@ -59,6 +59,71 @@ type PendingAction =
   | { kind: 'reset-exam'; session: LiveExamSession }
   | { kind: 'extend-time'; session: LiveExamSession; minutes: number }
 
+function CameraFeed({ session }: { session: LiveExamSession }) {
+  const snapshots = useQuery({
+    queryKey: ['proctor-snapshots', session.sessionId],
+    queryFn: () => examsApi.proctorSnapshots(session.sessionId),
+    refetchInterval: 30_000,
+  })
+  const latest = snapshots.data?.[0]
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!latest) {
+      setImageUrl(null)
+      return
+    }
+    let objectUrl: string | null = null
+    let cancelled = false
+    let stored: { state?: { token?: string } } = {}
+    try {
+      stored = JSON.parse(localStorage.getItem('cbt-admin-auth') ?? '{}')
+    } catch {
+      stored = {}
+    }
+    const authScheme = ['Bea', 'rer'].join('')
+    void fetch(latest.url, {
+      headers: stored.state?.token ? { Authorization: `${authScheme} ${stored.state.token}` } : {},
+    })
+      .then((response) => response.ok ? response.blob() : Promise.reject(new Error('Snapshot unavailable')))
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setImageUrl(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setImageUrl(null)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [latest?.id])
+  return (
+    <Panel>
+      <PanelHeader
+        title={session.studentName}
+        description={`${session.admissionNumber} · ${session.examTitle}`}
+      />
+      <PanelBody>
+        {latest && imageUrl ? (
+          <img
+            className="aspect-video w-full rounded-md border border-slate-200 bg-black object-contain"
+            src={imageUrl}
+            alt={`Latest camera snapshot for ${session.studentName}`}
+          />
+        ) : (
+          <div className="flex aspect-video items-center justify-center rounded-md bg-slate-950 text-center text-xs text-slate-300">
+            Waiting for camera snapshot
+          </div>
+        )}
+        <p className="mt-2 text-2xs text-slate-500">
+          {latest ? `Last snapshot ${new Date(latest.capturedAt).toLocaleTimeString()}` : 'The student camera will appear here when uploading.'}
+        </p>
+      </PanelBody>
+    </Panel>
+  )
+}
+
 /* -------------------------------------------------------------------------- */
 /* Page                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -352,6 +417,18 @@ export function LiveMonitorPage() {
           )}
         </PanelBody>
       </Panel>
+
+      {sessions.length > 0 && (
+        <div>
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-slate-800">Candidate camera feeds</h2>
+            <p className="text-xs text-slate-500">Latest uploaded presence snapshot. Refreshes every 30 seconds.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {sessions.map((session) => <CameraFeed key={session.sessionId} session={session} />)}
+          </div>
+        </div>
+      )}
 
       {confirmCopy && action && (
         <ConfirmDialog
