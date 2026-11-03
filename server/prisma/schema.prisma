@@ -447,6 +447,7 @@ model ProctorSnapshot {
   examSession ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, capturedAt])
+  @@map("proctor_snapshots")
 }
 
 model ExamAnswer {

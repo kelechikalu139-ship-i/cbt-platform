@@ -1,4 +1,4 @@
-CREATE TABLE `ProctorSnapshot` (
+CREATE TABLE `proctor_snapshots` (
   `id` CHAR(36) NOT NULL,
   `sessionId` CHAR(36) NOT NULL,
   `image` LONGBLOB NOT NULL,
@@ -6,8 +6,8 @@ CREATE TABLE `ProctorSnapshot` (
   `source` VARCHAR(32) NOT NULL DEFAULT 'camera',
 
   PRIMARY KEY (`id`),
-  INDEX `ProctorSnapshot_sessionId_capturedAt_idx`(`sessionId`, `capturedAt`),
-  CONSTRAINT `ProctorSnapshot_sessionId_fkey`
-    FOREIGN KEY (`sessionId`) REFERENCES `ExamSession`(`id`)
+  INDEX `proctor_snapshots_sessionId_capturedAt_idx`(`sessionId`, `capturedAt`),
+  CONSTRAINT `proctor_snapshots_sessionId_fkey`
+    FOREIGN KEY (`sessionId`) REFERENCES `exam_sessions`(`id`)
     ON DELETE CASCADE ON UPDATE CASCADE
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
