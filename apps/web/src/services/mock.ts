@@ -383,6 +383,7 @@ export const mockExamAPI = {
     session.submittedAt = new Date().toISOString()
     return ok({ sessionId: session.id })
   },
+  submitProctorSnapshot: async () => ok({}),
   getResults: async (sessionId: string) => {
     await delay(300)
     const session = sessions.get(sessionId)

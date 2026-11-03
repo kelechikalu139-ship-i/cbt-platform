@@ -18,6 +18,8 @@ import {
   listExamAttempts,
   listLiveSessions,
   resetExamAttempts,
+  listProctorSnapshots,
+  getProctorSnapshot,
 } from './monitoring.service.js'
 
 /**
@@ -44,6 +46,30 @@ monitoringRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     // `validate` replaces `req.query` with the parsed values.
     sendData(res, await listLiveSessions(req.query as never))
+  }),
+)
+
+monitoringRouter.get(
+  '/sessions/:id/proctor-snapshots',
+  requirePermission(PERMISSIONS.EXAMS_READ),
+  validate({ params: idParamSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    sendData(res, await listProctorSnapshots(String(req.params.id)))
+  }),
+)
+
+monitoringRouter.get(
+  '/sessions/:id/proctor-snapshots/:snapshotId/image',
+  requirePermission(PERMISSIONS.EXAMS_READ),
+  asyncHandler(async (req: Request, res: Response) => {
+    const snapshot = await getProctorSnapshot(String(req.params.id), String(req.params.snapshotId))
+    if (!snapshot) {
+      res.status(404).json({ success: false, message: 'Camera snapshot not found' })
+      return
+    }
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.send(snapshot.image)
   }),
 )
 

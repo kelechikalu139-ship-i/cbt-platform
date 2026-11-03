@@ -96,7 +96,7 @@ function DashboardRoute() {
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => dashboardApi.summary(),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   })

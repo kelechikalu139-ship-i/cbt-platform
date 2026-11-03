@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react'
-import { useDismissable } from '../../hooks/useDismissable'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '../../utils'
 
 export interface DropdownProps {
@@ -13,12 +13,56 @@ export interface DropdownProps {
 export function Dropdown({ trigger, children, align = 'right', className }: DropdownProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 208 })
 
-  useDismissable(open, () => setOpen(false), containerRef)
+  useEffect(() => {
+    if (!open) return
+    const dismiss = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node
+      if (!containerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', dismiss)
+    document.addEventListener('touchstart', dismiss)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', dismiss)
+      document.removeEventListener('touchstart', dismiss)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const width = 208
+      const left = align === 'right' ? rect.right - width : rect.left
+      setPosition({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
+        width,
+      })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open, align])
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
-      <div
+      <div ref={triggerRef}
         onClick={(event) => {
           event.stopPropagation()
           setOpen((value) => !value)
@@ -26,16 +70,21 @@ export function Dropdown({ trigger, children, align = 'right', className }: Drop
       >
         {trigger}
       </div>
-      {open && (
+      {open && createPortal(
         <div
-          onClick={(event) => event.stopPropagation()}
+          ref={menuRef}
+          onClick={(event) => {
+            event.stopPropagation()
+            setOpen(false)
+          }}
           className={cn(
-            'absolute z-30 mt-1.5 min-w-[13rem] animate-slide-up overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-pop',
-            align === 'right' ? 'right-0' : 'left-0',
+            'fixed z-[100] animate-slide-up overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-pop',
           )}
+          style={{ top: position.top, left: position.left, width: position.width }}
         >
           {children}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

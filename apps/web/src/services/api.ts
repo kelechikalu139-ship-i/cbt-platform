@@ -107,6 +107,8 @@ const realExamAPI = {
   saveAnswer: (sessionId: string, questionId: string, answer: string) =>
     api.post(`/portal/sessions/${sessionId}/answer`, { questionId, answer }),
   submitSession: (sessionId: string) => api.post(`/portal/sessions/${sessionId}/submit`),
+  submitProctorSnapshot: (sessionId: string, image: string) =>
+    api.post(`/portal/sessions/${sessionId}/proctor-snapshot`, { image }),
   getResults: (sessionId: string) => api.get(`/portal/sessions/${sessionId}/result`),
   getMySessions: () => api.get('/portal/sessions/mine'),
 }

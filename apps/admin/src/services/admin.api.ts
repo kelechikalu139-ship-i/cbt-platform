@@ -275,6 +275,10 @@ export const realExamsApi = {
    */
   liveSessions: (query: { examId?: string; limit?: number } = {}) =>
     http.get<LiveExamSession[]>('/exams/sessions/live', { query: query as Query }),
+  proctorSnapshots: (sessionId: string) =>
+    http.get<Array<{ id: string; capturedAt: string; url: string }>>(
+      `/exams/sessions/${sessionId}/proctor-snapshots`,
+    ),
 
   /**
    * Close one candidate's live attempt early and grade what was answered.

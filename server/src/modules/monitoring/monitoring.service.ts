@@ -184,6 +184,45 @@ export async function countLiveSessions(): Promise<number> {
   return prisma.examSession.count({ where: { status: 'IN_PROGRESS' } })
 }
 
+export async function saveProctorSnapshot(sessionId: string, user: { id: string }, image: Buffer) {
+  const session = await prisma.examSession.findFirst({
+    where: { id: sessionId, status: 'IN_PROGRESS', student: { userId: user.id } },
+    select: { id: true },
+  })
+  if (!session) throw ApiError.notFound('Active examination session not found')
+
+  const snapshot = await prisma.proctorSnapshot.create({
+    data: { sessionId: session.id, image: new Uint8Array(image), source: 'camera' },
+    select: { id: true, capturedAt: true },
+  })
+  await prisma.examSession.update({
+    where: { id: sessionId },
+    data: { lastSavedAt: new Date() },
+  })
+  return { id: snapshot.id, capturedAt: snapshot.capturedAt.toISOString() }
+}
+
+export async function listProctorSnapshots(sessionId: string) {
+  const snapshots = await prisma.proctorSnapshot.findMany({
+    where: { sessionId },
+    orderBy: { capturedAt: 'desc' },
+    take: 12,
+    select: { id: true, capturedAt: true },
+  })
+  return snapshots.map((snapshot) => ({
+    id: snapshot.id,
+    capturedAt: snapshot.capturedAt.toISOString(),
+    url: `/api/v1/exams/sessions/${encodeURIComponent(sessionId)}/proctor-snapshots/${snapshot.id}/image`,
+  }))
+}
+
+export async function getProctorSnapshot(sessionId: string, snapshotId: string) {
+  return prisma.proctorSnapshot.findFirst({
+    where: { id: snapshotId, sessionId },
+    select: { image: true },
+  })
+}
+
 /** Candidates holding a live portal sign-in. */
 export async function countSignedInStudents(): Promise<number> {
   return prisma.user.count({

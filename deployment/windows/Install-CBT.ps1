@@ -91,10 +91,15 @@ function Write-InstallationConfig {
   $dbPassword = New-RandomHex 32
   $apiSecret = New-RandomHex 48
   $refreshSecret = New-RandomHex 48
-  $lanAddress = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+  $lanAddresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.AddressState -eq 'Preferred' } |
-    Select-Object -First 1 -ExpandProperty IPAddress
-  if (-not $lanAddress) { $lanAddress = 'localhost' }
+    Select-Object -ExpandProperty IPAddress -Unique)
+  if (-not $lanAddresses.Count) { $lanAddresses = @('localhost') }
+  $lanAddress = $lanAddresses[0]
+  $corsOrigins = @('http://localhost:5000', 'http://127.0.0.1:5000')
+  foreach ($address in $lanAddresses) {
+    if ($address -ne 'localhost') { $corsOrigins += "http://${address}:5000" }
+  }
   $lines = @(
     'NODE_ENV=production',
     'PORT=5000',
@@ -111,7 +116,7 @@ function Write-InstallationConfig {
     'JWT_ACCESS_EXPIRES_IN=15m',
     'JWT_REFRESH_EXPIRES_IN=7d',
     'BCRYPT_SALT_ROUNDS=12',
-    "CORS_ORIGIN=`"http://localhost:5000,http://127.0.0.1:5000,http://${lanAddress}:5000`"",
+    "CORS_ORIGIN=`"$($corsOrigins -join ',')`"",
     'LOG_LEVEL=info',
     'LOG_PRETTY=false',
     "UPLOAD_DIR=`"$uploads`"",
@@ -468,9 +473,10 @@ if ((Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath $completeM
 }
 
 try {
-  New-NetFirewallRule -DisplayName 'The Platform CBT web access' -Direction Inbound -Protocol TCP -LocalPort 5000 -Profile Domain,Private -Action Allow -ErrorAction Stop | Out-Null
+  New-NetFirewallRule -DisplayName 'The Platform CBT web access' -Direction Inbound -Protocol TCP -LocalPort 5000 -Profile Domain,Private -RemoteAddress LocalSubnet -Action Allow -ErrorAction Stop | Out-Null
 } catch {
   if ($_.Exception.Message -notmatch 'already exists') { throw }
+  Set-NetFirewallRule -DisplayName 'The Platform CBT web access' -RemoteAddress LocalSubnet -ErrorAction Stop
 }
 
 $healthy = $false

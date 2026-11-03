@@ -57,6 +57,62 @@ export const ExamTakePage: React.FC = () => {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [tabLocked, setTabLocked] = useState(false)
   const tabInstanceId = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [cameraStatus, setCameraStatus] = useState<'starting' | 'ready' | 'unavailable'>('starting')
+  const [cameraError, setCameraError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus('unavailable')
+      setCameraError('Camera monitoring requires a supported browser and a secure HTTPS connection.')
+      return
+    }
+    let stream: MediaStream | null = null
+    let cancelled = false
+    void navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640 }, audio: false })
+      .then((mediaStream) => {
+        if (cancelled) {
+          mediaStream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        stream = mediaStream
+        if (videoRef.current) videoRef.current.srcObject = mediaStream
+        setCameraStatus('ready')
+        setCameraError(null)
+      })
+      .catch((error: DOMException) => {
+        setCameraStatus('unavailable')
+        setCameraError(error.name === 'NotAllowedError'
+          ? 'Camera permission was denied. Allow camera access to continue monitored examinations.'
+          : 'The examination camera could not be started.')
+      })
+    return () => {
+      cancelled = true
+      stream?.getTracks().forEach((track) => track.stop())
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (!session || cameraStatus !== 'ready') return
+    let inFlight = false
+    const capture = () => {
+      if (inFlight || !videoRef.current?.videoWidth) return
+      const video = videoRef.current
+      const canvas = document.createElement('canvas')
+      canvas.width = 320
+      canvas.height = Math.round((video.videoHeight / video.videoWidth) * 320)
+      const context = canvas.getContext('2d')
+      if (!context) return
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      inFlight = true
+      void examAPI.submitProctorSnapshot(session.id, canvas.toDataURL('image/jpeg', 0.72))
+        .catch((error) => console.error('Camera snapshot upload failed', error))
+        .finally(() => { inFlight = false })
+    }
+    capture()
+    const timer = window.setInterval(capture, 30_000)
+    return () => window.clearInterval(timer)
+  }, [session, cameraStatus])
 
   useEffect(() => {
     if (!id) return
@@ -328,6 +384,22 @@ export const ExamTakePage: React.FC = () => {
           <span className="shrink-0 text-xs text-gray-500">
             {questions.length - answeredCount} left
           </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="h-16 w-24 rounded-lg bg-gray-950 object-cover"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-800">Camera monitoring</p>
+          <p className={cameraStatus === 'ready' ? 'text-xs text-green-600' : 'text-xs text-amber-700'}>
+            {cameraStatus === 'ready' ? 'Camera connected. Presence snapshots are uploaded every 30 seconds.' : cameraError}
+          </p>
         </div>
       </div>
 

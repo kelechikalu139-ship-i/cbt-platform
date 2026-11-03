@@ -145,7 +145,9 @@ export default function App() {
         if (!response.ok) return;
         const release = await response.json() as { assets?: Array<{ browser_download_url?: string; name?: string }> };
         const installer = release.assets?.find((asset) =>
-          /cbt.*setup.*\.exe$/i.test(asset.name ?? "") && !/\.sha256$/i.test(asset.name ?? ""),
+          /(?:the-platform-)?cbt.*setup.*\.exe$/i.test(asset.name ?? "") && !/\.sha256$/i.test(asset.name ?? ""),
+        ) ?? release.assets?.find((asset) =>
+          /\.exe$/i.test(asset.name ?? "") && !/\.sha256$/i.test(asset.name ?? "") && /setup/i.test(asset.name ?? ""),
         );
         const resolved = normalizeDownloadUrl(installer?.browser_download_url);
         if (!cancelled && resolved) setInstallerDownloadUrl(resolved);

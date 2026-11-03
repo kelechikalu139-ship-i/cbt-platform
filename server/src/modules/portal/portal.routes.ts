@@ -155,6 +155,27 @@ portalRouter.post(
   }),
 )
 
+portalRouter.post(
+  '/sessions/:id/proctor-snapshot',
+  studentOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string }
+    const imageData = typeof req.body?.image === 'string' ? req.body.image : ''
+    const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=\r\n]+)$/.exec(imageData)
+    if (!match) {
+      res.status(400).json({ success: false, message: 'A valid JPEG camera snapshot is required' })
+      return
+    }
+    const image = Buffer.from(match[1] ?? '', 'base64')
+    if (image.length < 1024 || image.length > 2_500_000) {
+      res.status(400).json({ success: false, message: 'Camera snapshot must be between 1 KB and 2.5 MB' })
+      return
+    }
+    const { saveProctorSnapshot } = await import('../monitoring/monitoring.service.js')
+    sendData(res, await saveProctorSnapshot(id, currentUser(req), image), 201, 'Camera snapshot recorded')
+  }),
+)
+
 portalRouter.get(
   '/sessions/:id/result',
   studentOnly,

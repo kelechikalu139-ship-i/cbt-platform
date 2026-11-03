@@ -427,6 +427,7 @@ model ExamSession {
   student Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   answers ExamAnswer[]
   result  Result?
+  proctorSnapshots ProctorSnapshot[]
 
   // Starting an exam looks up "the live attempt for this student in this exam".
   @@unique([examId, studentId, attemptNumber])
@@ -435,6 +436,17 @@ model ExamSession {
   @@index([status])
   @@index([expiresAt])
   @@map("exam_sessions")
+}
+
+model ProctorSnapshot {
+  id          String     @id @default(uuid()) @db.Char(36)
+  sessionId   String     @db.Char(36)
+  image       Bytes      @db.LongBlob
+  capturedAt  DateTime   @default(now())
+  source      String     @default("camera") @db.VarChar(32)
+  examSession ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, capturedAt])
 }
 
 model ExamAnswer {

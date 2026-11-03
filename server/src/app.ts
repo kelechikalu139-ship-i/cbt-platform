@@ -134,8 +134,8 @@ export function createApp(): Application {
   // --- Parsing -----------------------------------------------------------
   // A modest body limit: the largest legitimate request is a bulk exam definition,
   // not a file upload. Upload/import endpoints get their own limit later.
-  app.use(express.json({ limit: '2mb' }))
-  app.use(express.urlencoded({ extended: false, limit: '2mb' }))
+  app.use(express.json({ limit: '4mb' }))
+  app.use(express.urlencoded({ extended: false, limit: '4mb' }))
 
   // --- Rate limiting -----------------------------------------------------
   app.use(globalLimiter)

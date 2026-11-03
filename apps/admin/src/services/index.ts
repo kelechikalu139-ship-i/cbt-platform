@@ -292,6 +292,7 @@ export const examsApi = pick(
     // The mock register has no exam engine: representative attempts stand
     // in for live ones, and the invigilator actions stay unavailable.
     liveSessions: async (): Promise<LiveExamSession[]> => mocks.fx.liveSessions(),
+    proctorSnapshots: async (): Promise<Array<{ id: string; capturedAt: string; url: string }>> => [],
     forceSubmitSession: (): Promise<never> => notYet('Ending an attempt'),
     resetAttempts: (): Promise<never> => notYet('Resetting attempts'),
     extendSession: (): Promise<never> => notYet('Extending an attempt'),
