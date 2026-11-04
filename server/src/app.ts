@@ -36,27 +36,34 @@ export function createApp(): Application {
     helmet({
       crossOriginOpenerPolicy: false,
       originAgentCluster: false,
-      // This process only ever serves JSON; a restrictive default-src costs
-      // nothing and removes any chance of injected script executing.
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          connectSrc: ["'self'"],
-          fontSrc: ["'self'", 'data:'],
-          imgSrc: ["'self'", 'data:'],
-          objectSrc: ["'none'"],
-          baseUri: ["'self'"],
-          frameAncestors: ["'none'"],
-        },
-      },
-      // The API is not the origin of the HTML app, so cross-origin resource
-      // sharing of its own assets is never needed.
-      crossOriginResourcePolicy: { policy: 'same-site' },
+      contentSecurityPolicy: false,
+      strictTransportSecurity: false,
+      crossOriginResourcePolicy: false,
       referrerPolicy: { policy: 'no-referrer' },
     }),
   )
+
+  // School installations are served over plain HTTP on a private LAN. Strip
+  // these policies again after Helmet has run so browsers cannot upgrade the
+  // LAN origin to HTTPS or retain stale HTTPS instructions.
+  app.use((_req, res, next) => {
+    res.removeHeader('Content-Security-Policy')
+    res.removeHeader('Content-Security-Policy-Report-Only')
+    res.removeHeader('Strict-Transport-Security')
+    res.removeHeader('Cross-Origin-Opener-Policy')
+    res.removeHeader('Origin-Agent-Cluster')
+    if (_req.method === 'GET' && (
+      _req.path === '/'
+      || _req.path === '/admin'
+      || _req.path === '/admin/'
+      || _req.path.endsWith('.html')
+    )) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
+    }
+    next()
+  })
 
   // --- CORS --------------------------------------------------------------
   // Cross-origin browser requests are limited to the configured allow-list
