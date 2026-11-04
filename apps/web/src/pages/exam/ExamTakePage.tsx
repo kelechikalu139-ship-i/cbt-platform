@@ -110,7 +110,7 @@ export const ExamTakePage: React.FC = () => {
         .finally(() => { inFlight = false })
     }
     capture()
-    const timer = window.setInterval(capture, 30_000)
+    const timer = window.setInterval(capture, 60_000)
     return () => window.clearInterval(timer)
   }, [session, cameraStatus])
 
@@ -398,7 +398,7 @@ export const ExamTakePage: React.FC = () => {
         <div className="min-w-0">
           <p className="text-sm font-medium text-gray-800">Camera monitoring</p>
           <p className={cameraStatus === 'ready' ? 'text-xs text-green-600' : 'text-xs text-amber-700'}>
-            {cameraStatus === 'ready' ? 'Camera connected. Presence snapshots are uploaded every 30 seconds.' : cameraError}
+            {cameraStatus === 'ready' ? 'Camera connected. Presence snapshots are uploaded every 60 seconds.' : cameraError}
           </p>
         </div>
       </div>

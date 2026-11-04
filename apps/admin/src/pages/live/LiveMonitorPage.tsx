@@ -71,7 +71,7 @@ function CameraFeed({
   const snapshots = useQuery({
     queryKey: ['proctor-snapshots', session.sessionId],
     queryFn: () => examsApi.proctorSnapshots(session.sessionId),
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
   })
   const latest = snapshots.data?.[0]
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -447,7 +447,7 @@ export function LiveMonitorPage() {
         <div>
           <div className="mb-3">
             <h2 className="text-sm font-semibold text-slate-800">Candidate camera feeds</h2>
-            <p className="text-xs text-slate-500">Latest uploaded presence snapshot. Camera checks refresh every 5 seconds.</p>
+            <p className="text-xs text-slate-500">Latest uploaded presence snapshot. Camera checks refresh every 30 seconds.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {sessions.map((session) => (

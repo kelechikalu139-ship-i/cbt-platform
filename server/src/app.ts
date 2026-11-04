@@ -34,6 +34,8 @@ export function createApp(): Application {
   // --- Security headers --------------------------------------------------
   app.use(
     helmet({
+      crossOriginOpenerPolicy: false,
+      originAgentCluster: false,
       // This process only ever serves JSON; a restrictive default-src costs
       // nothing and removes any chance of injected script executing.
       contentSecurityPolicy: {
