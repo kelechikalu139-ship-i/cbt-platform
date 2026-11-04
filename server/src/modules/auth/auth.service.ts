@@ -42,9 +42,11 @@ function ipv4ToNumber(ip: string): number | null {
 
 function ipInCidr(ip: string, cidr: string): boolean {
   const [network, prefixText] = cidr.trim().split('/')
-  const address = ipv4ToNumber(ip)
   if (!network) return false
-  const networkAddress = ipv4ToNumber(network)
+  const normalizedIp = ip.trim().replace(/^::ffff:/i, '')
+  const normalizedNetwork = network.trim().replace(/^::ffff:/i, '')
+  const address = ipv4ToNumber(normalizedIp)
+  const networkAddress = ipv4ToNumber(normalizedNetwork)
   const prefix = prefixText === undefined ? 32 : Number(prefixText)
   if (address === null || networkAddress === null || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false
   if (prefix === 0) return true

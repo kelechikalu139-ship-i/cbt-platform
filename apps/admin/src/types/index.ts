@@ -820,6 +820,8 @@ export interface SystemSettings {
   maintenanceMode: boolean
   studentAccessNetworksEnabled: boolean
   studentAccessNetworks: string[]
+  approvedHallNetworksEnabled?: boolean
+  approvedHallNetworks?: string[]
   studentAccessDevicesEnabled: boolean
   studentAccessDevices: string[]
 }

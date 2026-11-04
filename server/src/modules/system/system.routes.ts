@@ -146,9 +146,22 @@ brandingRouter.get(
       settings = DEFAULTS
     }
     const logoUrl = settings.logoUrl as string | null
-    const publicLogoUrl = logoUrl
-      ? new URL(logoUrl, `${req.protocol}://${req.get('host')}`).toString()
-      : null
+    const requestOrigin = `${req.protocol}://${req.get('host')}`
+    let publicLogoUrl: string | null = null
+    if (logoUrl) {
+      try {
+        const parsed = new URL(logoUrl, requestOrigin)
+        publicLogoUrl = /^\/api\/v1\/uploads\//.test(parsed.pathname)
+          ? `${requestOrigin}${parsed.pathname}`
+          : parsed.protocol.startsWith('http')
+            ? parsed.toString()
+            : `${requestOrigin}${parsed.pathname}`
+      } catch {
+        publicLogoUrl = logoUrl.startsWith('/')
+          ? `${requestOrigin}${logoUrl}`
+          : logoUrl
+      }
+    }
     sendData(res, {
       schoolName: settings.schoolName as string,
       schoolShortName: settings.schoolShortName as string,
@@ -239,6 +252,8 @@ const settingsSchema = z.object({
   maintenanceMode: z.boolean().optional(),
   studentAccessNetworksEnabled: z.boolean().optional(),
   studentAccessNetworks: z.array(z.string().trim().min(1).max(63)).max(50).optional(),
+  approvedHallNetworksEnabled: z.boolean().optional(),
+  approvedHallNetworks: z.array(z.string().trim().min(1).max(63)).max(50).optional(),
   studentAccessDevicesEnabled: z.boolean().optional(),
   studentAccessDevices: z.array(z.string().trim().min(3).max(200)).max(500).optional(),
 })
@@ -259,6 +274,8 @@ const DEFAULTS: Record<string, unknown> = {
   maintenanceMode: false,
   studentAccessNetworksEnabled: false,
   studentAccessNetworks: [],
+  approvedHallNetworksEnabled: false,
+  approvedHallNetworks: [],
   studentAccessDevicesEnabled: false,
   studentAccessDevices: [],
 }
@@ -268,6 +285,13 @@ async function loadSettings() {
   const map: Record<string, unknown> = { ...DEFAULTS }
   for (const r of rows) {
     try { map[r.key] = JSON.parse(r.value) } catch { map[r.key] = r.value }
+  }
+  const storedKeys = new Set(rows.map((row) => row.key))
+  if (!storedKeys.has('approvedHallNetworksEnabled') && storedKeys.has('studentAccessNetworksEnabled')) {
+    map.approvedHallNetworksEnabled = map.studentAccessNetworksEnabled
+  }
+  if (!storedKeys.has('approvedHallNetworks') && storedKeys.has('studentAccessNetworks')) {
+    map.approvedHallNetworks = map.studentAccessNetworks
   }
   return map
 }
@@ -508,8 +532,7 @@ systemRouter.post(
     if (!file) {
       throw ApiError.badRequest('No logo file was uploaded')
     }
-    const origin = `${req.protocol}://${req.get('host')}`
-    sendData(res, { logoUrl: uploadUrl(file.filename, origin) }, 201)
+    sendData(res, { logoUrl: uploadUrl(file.filename) }, 201)
   }),
 )
 
