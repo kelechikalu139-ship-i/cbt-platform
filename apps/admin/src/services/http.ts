@@ -70,6 +70,7 @@ interface RequestOptions {
   body?: unknown
   query?: Record<string, string | number | boolean | undefined | null>
   signal?: AbortSignal
+  cache?: RequestCache
   /**
    * Non-2xx statuses to resolve instead of throwing.
    *
@@ -110,7 +111,7 @@ export function readToken(): string | null {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, query, signal, acceptStatuses } = options
+  const { method = 'GET', body, query, signal, acceptStatuses, cache } = options
 
   const headers: Record<string, string> = { Accept: 'application/json' }
   const isFormData = body instanceof FormData
@@ -127,6 +128,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       body: isFormData ? (body as BodyInit) : body === undefined ? undefined : JSON.stringify(body),
       signal,
       credentials: 'omit',
+      cache,
     })
   } catch (cause) {
     if ((cause as Error)?.name === 'AbortError') throw cause

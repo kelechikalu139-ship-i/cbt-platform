@@ -10,7 +10,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
 import { applyBrandColor } from '../utils/theme'
 import { cn } from '../utils'
-import type { SystemSettings } from '../types'
 
 /**
  * Sign-in screen.
@@ -31,10 +30,18 @@ export function LoginPage() {
   const queryClient = useQueryClient()
   const errorMessage = useApiErrorMessage(error)
 
-  const { data: settings } = useQuery<SystemSettings>({
-    queryKey: ['settings'],
-    queryFn: () => systemApi.settings(),
-    staleTime: 5 * 60_000,
+  const { data: settings } = useQuery<{
+    schoolName: string
+    schoolShortName: string
+    primaryColor: string | null
+    logoUrl: string | null
+  }>({
+    queryKey: ['login-branding'],
+    queryFn: () => systemApi.branding(),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 
   // Apply the institution's brand colour so the sign-in screen matches the
@@ -95,7 +102,9 @@ export function LoginPage() {
               C
             </div>
           )}
-          <h1 className="text-lg font-semibold text-white">CBT Administration</h1>
+          <h1 className="text-lg font-semibold text-white">
+            {settings?.schoolName ?? 'CBT Administration'}
+          </h1>
           <p className="mt-1 text-sm text-ink-400">Sign in to manage examinations.</p>
         </div>
 

@@ -120,6 +120,15 @@ export const systemApi = pick(
     importLicense: (_signedLicense: unknown): Promise<LocalLicenseInfo> =>
       Promise.reject(new Error('Offline license import is disabled in mock mode.')),
     settings: () => mocks.mockSystemApi.settings(),
+    branding: async () => {
+      const settings = await mocks.mockSystemApi.settings()
+      return {
+        schoolName: settings.schoolName,
+        schoolShortName: settings.schoolShortName,
+        primaryColor: settings.primaryColor ?? null,
+        logoUrl: settings.logoUrl,
+      }
+    },
     saveSettings: mocks.mockSystemApi.saveSettings,
     uploadLogo: (file: File) =>
       Promise.resolve({ logoUrl: URL.createObjectURL(file) }),
@@ -143,6 +152,7 @@ export const systemApi = pick(
     activateLicense: realSystemApi.activateLicense,
     importLicense: realSystemApi.importLicense,
     settings: realSystemApi.settings,
+    branding: realSystemApi.branding,
     saveSettings: realSystemApi.saveSettings,
     uploadLogo: realSystemApi.uploadLogo,
     accessUrls: (): Promise<never> => notYet('Access URLs'),

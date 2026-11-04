@@ -17,7 +17,9 @@ export const LoginPage: React.FC = () => {
     let cancelled = false
     void (async () => {
       try {
-        const response = await api.get<{ data: Branding }>('/system/branding')
+        const response = await api.get<{ data: Branding }>('/system/branding', {
+          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        })
         if (!cancelled) {
           setBranding(response.data.data)
           applyBranding(response.data.data)

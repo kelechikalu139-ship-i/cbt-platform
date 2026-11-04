@@ -53,39 +53,21 @@ function ipInCidr(ip: string, cidr: string): boolean {
 }
 
 async function assertStudentNetworkAllowed(ipAddress?: string | null): Promise<void> {
-  const rows = await prisma.systemSetting.findMany({ where: { key: { in: ['studentAccessNetworksEnabled', 'studentAccessNetworks'] } } })
+  const rows = await prisma.systemSetting.findMany({
+    where: { key: { in: ['studentAccessNetworksEnabled', 'studentAccessNetworks', 'approvedHallNetworksEnabled', 'approvedHallNetworks'] } },
+  })
   const values = Object.fromEntries(rows.map((row) => {
     try { return [row.key, JSON.parse(row.value)] } catch { return [row.key, row.value] }
   }))
-  if (values.studentAccessNetworksEnabled !== true) return
-  const networks: string[] = Array.isArray(values.studentAccessNetworks)
-    ? values.studentAccessNetworks.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter((value) => value.length > 0)
+  const enabled = values.approvedHallNetworksEnabled ?? values.studentAccessNetworksEnabled
+  if (enabled !== true) return
+  const configuredNetworks = values.approvedHallNetworks ?? values.studentAccessNetworks
+  const networks: string[] = Array.isArray(configuredNetworks)
+    ? configuredNetworks.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter((value) => value.length > 0)
     : []
   if (!networks.length) throw new ApiError(403, 'No student hall network is configured', 'STUDENT_NETWORK_NOT_CONFIGURED')
   if (!ipAddress || !networks.some((network) => ipInCidr(ipAddress, network))) {
     throw new ApiError(403, 'Sign-in is not allowed from this device or network', 'STUDENT_NETWORK_NOT_ALLOWED')
-  }
-}
-
-async function assertStudentDeviceAllowed(studentId: string, ipAddress?: string | null): Promise<void> {
-  const rows = await prisma.systemSetting.findMany({
-    where: { key: { in: ['studentAccessDevicesEnabled', 'studentAccessDevices'] } },
-  })
-  const values = Object.fromEntries(rows.map((row) => {
-    try { return [row.key, JSON.parse(row.value)] } catch { return [row.key, row.value] }
-  }))
-  if (values.studentAccessDevicesEnabled !== true) return
-  const entries: string[] = Array.isArray(values.studentAccessDevices)
-    ? values.studentAccessDevices.filter((value): value is string => typeof value === 'string')
-    : []
-  const studentKey = studentId.trim().toUpperCase()
-  const allowedIps = entries.flatMap((entry) => {
-    const [entryStudent, ...ips] = entry.split('=')
-    return entryStudent?.trim().toUpperCase() === studentKey ? ips.join('=').split(',').map((ip) => ip.trim()) : []
-  })
-  const requestIp = ipAddress?.replace(/^::ffff:/, '')
-  if (!requestIp || !allowedIps.includes(requestIp)) {
-    throw new ApiError(403, 'This computer is not assigned to your student account', 'STUDENT_DEVICE_NOT_ALLOWED')
   }
 }
 
@@ -538,7 +520,6 @@ export async function studentLogin(
   context: RequestContext,
 ): Promise<AuthResult> {
   await assertStudentNetworkAllowed(context.ipAddress)
-  await assertStudentDeviceAllowed(input.studentId, context.ipAddress)
 
   // Resolve the candidate first: matric-only sign-in works from the
   // register, so a candidate is never blocked merely because a portal

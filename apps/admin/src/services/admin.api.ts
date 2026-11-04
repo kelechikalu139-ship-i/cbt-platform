@@ -126,6 +126,12 @@ export const realSystemApi = {
   importLicense: (signedLicense: unknown) =>
     http.post<LocalLicenseInfo>('/system/license/import', { signedLicense }),
   /** System settings. */
+  branding: () => http.get<{
+    schoolName: string
+    schoolShortName: string
+    primaryColor: string | null
+    logoUrl: string | null
+  }>('/system/branding', { cache: 'no-store' }),
   settings: () => http.get<SystemSettings>('/system/settings'),
   saveSettings: (patch: Partial<SystemSettings>) => http.patch<SystemSettings>('/system/settings', patch),
   /**
