@@ -3,7 +3,6 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../store'
 import { Button, Input } from '../../components/common'
 import { api, authAPI } from '../../services/api'
-import { cn } from '../../utils'
 import { applyBranding, type Branding } from '../../utils/branding'
 
 export const LoginPage: React.FC = () => {
@@ -61,24 +60,11 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          {branding?.logoUrl ? (
-            <img
-              src={branding.logoUrl}
-              alt={branding.schoolName}
-              className="mx-auto mb-4 w-16 h-auto rounded-2xl border border-gray-200 bg-white"
-            />
-          ) : (
-            <div
-              className={cn(
-                'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center text-2xl font-bold mb-4',
-                branding?.primaryColor
-                  ? 'bg-[var(--cb-primary)] text-[var(--cb-primary-text)]'
-                  : 'bg-indigo-600 text-white',
-              )}
-            >
-              {branding?.schoolShortName?.charAt(0) ?? 'C'}
-            </div>
-          )}
+          <img
+            src={branding?.logoUrl ?? '/brand-default.png'}
+            alt={`${branding?.schoolName ?? 'CBT'} logo`}
+            className="mx-auto mb-4 h-20 w-20 rounded-2xl border border-gray-200 bg-white p-1 object-contain shadow-sm"
+          />
           <h1 className="text-2xl font-bold text-gray-900">
             {branding?.schoolName ?? 'CBT Platform'}
           </h1>

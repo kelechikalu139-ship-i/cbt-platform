@@ -262,7 +262,7 @@ const DEFAULTS: Record<string, unknown> = {
   schoolName: 'CBT Examination System',
   schoolShortName: 'CBT',
   primaryColor: '#4f46e5',
-  logoUrl: null,
+  logoUrl: '/brand-default.png',
   defaultTimezone: 'Africa/Lagos',
   serverPort: 5000,
   backupPath: 'C:\\CBT\\backups',

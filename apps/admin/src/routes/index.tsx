@@ -166,6 +166,7 @@ function QuestionsRoute() {
     queryFn: () => categoriesApi.list({ page: 1, pageSize: 50 }),
   })
   const message = useApiErrorMessage(query.error)
+  const subjectsMessage = useApiErrorMessage(subjects.error)
 
   return (
     <QuestionsPage
@@ -173,9 +174,12 @@ function QuestionsRoute() {
       meta={query.data?.meta ?? EMPTY_META}
       subjects={subjects.data ?? []}
       categories={categories.data?.data ?? []}
-      loading={query.isPending}
-      error={message}
-      onRetry={() => void query.refetch()}
+      loading={query.isPending || subjects.isPending}
+      error={message ?? subjectsMessage}
+      onRetry={() => {
+        void query.refetch()
+        void subjects.refetch()
+      }}
     />
   )
 }

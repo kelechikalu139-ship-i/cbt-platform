@@ -229,7 +229,7 @@ const subjectSelect = {
   createdAt: true,
   updatedAt: true,
   category: { select: { id: true, name: true } },
-  _count: { select: { questions: true } },
+  _count: { select: { questions: { where: { deletedAt: null } } } },
 } satisfies Prisma.SubjectSelect
 
 type SubjectRow = Prisma.SubjectGetPayload<{ select: typeof subjectSelect }>
@@ -270,7 +270,26 @@ export async function listSubjects(query: {
     take: 500,
   })
 
-  return rows.map(subjectToDto)
+  const groupedTypes = await prisma.question.groupBy({
+    by: ['subjectId', 'type'],
+    where: { deletedAt: null },
+    _count: { _all: true },
+  })
+  const typeCountsBySubject = new Map<string, Record<string, number>>()
+  for (const group of groupedTypes) {
+    const counts = typeCountsBySubject.get(group.subjectId) ?? {}
+    counts[group.type] = group._count._all
+    typeCountsBySubject.set(group.subjectId, counts)
+  }
+
+  return rows.map((row) => {
+    const questionTypeCounts = typeCountsBySubject.get(row.id) ?? {}
+    return {
+      ...subjectToDto(row),
+      questionCount: Object.values(questionTypeCounts).reduce((total, count) => total + count, 0),
+      questionTypeCounts,
+    }
+  })
 }
 
 export async function createSubject(

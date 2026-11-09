@@ -326,6 +326,7 @@ export interface Subject {
   categoryId: string
   categoryName: string
   questionCount: number
+  questionTypeCounts?: Partial<Record<QuestionType, number>>
   createdAt: string
   updatedAt: string
 }

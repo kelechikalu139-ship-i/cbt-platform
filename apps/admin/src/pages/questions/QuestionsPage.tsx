@@ -1,6 +1,6 @@
-import { Copy, Download, Eye, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowRight, BookOpen, Copy, Download, Eye, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Papa from 'papaparse'
 import {
   Badge,
@@ -9,25 +9,34 @@ import {
   DropdownDivider,
   DropdownItem,
   ErrorState,
+  EmptyState,
   FilterSelect,
   Modal,
   PageHeader,
   Pagination,
   Panel,
   PanelBody,
-  PhaseNotice,
   ResultCount,
   SearchBar,
   StatusBadge,
-  Toolbar,
   ToolbarGroup,
   type Column,
 } from '../../components/ui'
 import { QuestionEditor, BulkImportModal } from '../../components/questions'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import { useTableState } from '../../hooks/useTableState'
 import { ApiError, questionsApi, questionMutations } from '../../services'
-import { QUESTION_TYPE_LABELS, type Category, type Question, type QuestionInput, type Subject } from '../../types'
+import {
+  DIFFICULTIES,
+  QUESTION_TYPES,
+  QUESTION_TYPE_LABELS,
+  type Category,
+  type Difficulty,
+  type Question,
+  type QuestionInput,
+  type QuestionStatus,
+  type QuestionType,
+  type Subject,
+} from '../../types'
 import { formatDate, formatNumber, shortId, toDecimalNumber } from '../../utils'
 
 interface QuestionsPageProps {
@@ -48,22 +57,36 @@ const DIFFICULTY_TONE = {
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All statuses' },
-  { value: 'active', label: 'Active' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'archived', label: 'Archived' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'INACTIVE', label: 'Inactive' },
 ]
 
 const DIFFICULTY_OPTIONS = [
   { value: 'all', label: 'All difficulties' },
-  { value: 'easy', label: 'Easy' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'hard', label: 'Hard' },
+  { value: 'EASY', label: 'Easy' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HARD', label: 'Hard' },
 ]
 
 const TYPE_OPTIONS = [
   { value: 'all', label: 'All types' },
   ...Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => ({ value, label })),
 ]
+
+const QUESTION_STATUSES: QuestionStatus[] = ['ACTIVE', 'DRAFT', 'INACTIVE']
+
+function questionStatusFilter(value: string): QuestionStatus | 'all' {
+  return QUESTION_STATUSES.find((status) => status === value) ?? 'all'
+}
+
+function questionDifficultyFilter(value: string): Difficulty | 'all' {
+  return DIFFICULTIES.find((difficulty) => difficulty === value) ?? 'all'
+}
+
+function questionTypeFilter(value: string): QuestionType | 'all' {
+  return QUESTION_TYPES.find((type) => type === value) ?? 'all'
+}
 
 /** Clamp long question text so one verbose stem cannot break row rhythm. */
 function QuestionText({ text }: { text: string }) {
@@ -84,14 +107,15 @@ export function QuestionsPage({
   onRetry,
 }: QuestionsPageProps) {
   const queryClient = useQueryClient()
-  const table = useTableState<{ status: string; difficulty: string; type: string; subjectId: string }>({
-    status: 'all',
-    difficulty: 'all',
-    type: 'all',
-    subjectId: 'all',
-  })
-  const [search, setSearch] = useState('')
-  const debounced = useDebouncedValue(search, 300)
+  const [subjectSearch, setSubjectSearch] = useState('')
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null)
+  const [detailSearch, setDetailSearch] = useState('')
+  const debouncedDetailSearch = useDebouncedValue(detailSearch, 250)
+  const [detailStatus, setDetailStatus] = useState<QuestionStatus | 'all'>('all')
+  const [detailDifficulty, setDetailDifficulty] = useState<Difficulty | 'all'>('all')
+  const [detailType, setDetailType] = useState<QuestionType | 'all'>('all')
+  const [detailPage, setDetailPage] = useState(1)
+  const [detailPageSize, setDetailPageSize] = useState(20)
   const [preview, setPreview] = useState<Question | null>(null)
 
   // Mutation dialogs
@@ -104,6 +128,8 @@ export function QuestionsPage({
     mutationFn: (payload: QuestionInput) => questionMutations.create(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['questions'] })
+      void queryClient.invalidateQueries({ queryKey: ['question-subjects'] })
+      void queryClient.invalidateQueries({ queryKey: ['subject-questions'] })
       void queryClient.invalidateQueries({ queryKey: ['exam-question-picker'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setAddOpen(false)
@@ -119,6 +145,8 @@ export function QuestionsPage({
       questionMutations.update(id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['questions'] })
+      void queryClient.invalidateQueries({ queryKey: ['question-subjects'] })
+      void queryClient.invalidateQueries({ queryKey: ['subject-questions'] })
       void queryClient.invalidateQueries({ queryKey: ['exam-question-picker'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setEditTarget(null)
@@ -136,10 +164,11 @@ export function QuestionsPage({
     }) => questionsApi.bulkImport(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['questions'] })
+      void queryClient.invalidateQueries({ queryKey: ['question-subjects'] })
+      void queryClient.invalidateQueries({ queryKey: ['subject-questions'] })
       void queryClient.invalidateQueries({ queryKey: ['exam-question-picker'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['question-categories'] })
-      void queryClient.invalidateQueries({ queryKey: ['question-subjects'] })
       setImportOpen(false)
       setMutationError(null)
     },
@@ -148,20 +177,37 @@ export function QuestionsPage({
     },
   })
 
-  const visible = useMemo(() => {
-    const term = debounced.trim().toLowerCase()
-    return questions.filter((q) => {
-      const f = table.state.filters
-      if (f.status !== 'all' && q.status !== f.status) return false
-      if (f.difficulty !== 'all' && q.difficulty !== f.difficulty) return false
-      if (f.type !== 'all' && q.type !== f.type) return false
-      if (f.subjectId !== 'all' && q.subjectId !== f.subjectId) return false
-      if (!term) return true
-      return [q.stem, q.subjectName, q.categoryName, q.tags].some((v) =>
-        String(v ?? '').toLowerCase().includes(term),
-      )
-    })
-  }, [questions, debounced, table.state.filters])
+  const visibleSubjects = useMemo(() => {
+    const term = subjectSearch.trim().toLowerCase()
+    return subjects.filter((subject) =>
+      !term || [subject.name, subject.code, subject.categoryName]
+        .some((value) => String(value ?? '').toLowerCase().includes(term)),
+    )
+  }, [subjects, subjectSearch])
+
+  const subjectQuestions = useQuery({
+    queryKey: [
+      'subject-questions',
+      selectedSubject?.id,
+      debouncedDetailSearch,
+      detailStatus,
+      detailDifficulty,
+      detailType,
+      detailPage,
+      detailPageSize,
+    ],
+    queryFn: () =>
+      questionsApi.list({
+        page: detailPage,
+        pageSize: detailPageSize,
+        subjectId: selectedSubject!.id,
+        search: debouncedDetailSearch || undefined,
+        status: detailStatus === 'all' ? undefined : detailStatus,
+        difficulty: detailDifficulty === 'all' ? undefined : detailDifficulty,
+        type: detailType === 'all' ? undefined : detailType,
+      }),
+    enabled: selectedSubject !== null,
+  })
 
   const columns: Array<Column<Question>> = [
     {
@@ -277,6 +323,8 @@ export function QuestionsPage({
             onClick={() => {
               void questionMutations.remove(q.id)
               void queryClient.invalidateQueries({ queryKey: ['questions'] })
+              void queryClient.invalidateQueries({ queryKey: ['question-subjects'] })
+              void queryClient.invalidateQueries({ queryKey: ['subject-questions'] })
             }}
           >
             Delete
@@ -288,7 +336,7 @@ export function QuestionsPage({
   ]
 
   const handleExport = () => {
-    const rows = visible.map((q) => ({
+    const rows = questions.map((q) => ({
       stem: q.stem,
       type: q.type,
       category: q.categoryName,
@@ -313,6 +361,16 @@ export function QuestionsPage({
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+  }
+
+  const openSubject = (subject: Subject) => {
+    setSelectedSubject(subject)
+    setDetailSearch('')
+    setDetailStatus('all')
+    setDetailDifficulty('all')
+    setDetailType('all')
+    setDetailPage(1)
+    setDetailPageSize(20)
   }
 
   return (
@@ -364,80 +422,174 @@ export function QuestionsPage({
         }
       />
 
-      <PhaseNotice phase="Phase 3 — Question Bank">
-        Authoring, duplication and bulk import/export arrive with the Node.js API. The bank is
-        already modelled for multiple choice as the primary type, with true/false, multiple answer
-        and short answer supported.
-      </PhaseNotice>
-
       <Panel>
-        <Toolbar>
-          <ToolbarGroup>
-            <SearchBar
-              value={search}
-              onChange={(v) => {
-                setSearch(v)
-                table.setSearch(v)
-              }}
-              placeholder="Search question text or reference…"
-              label="Search questions"
-            />
-            <FilterSelect
-              label="Subject"
-              value={table.state.filters.subjectId}
-              onChange={(v) => table.setFilter('subjectId', v)}
-              options={[
-                { value: 'all', label: 'All subjects' },
-                ...subjects.map((s) => ({ value: s.id, label: s.name })),
-              ]}
-            />
-            <FilterSelect
-              label="Status"
-              value={table.state.filters.status}
-              onChange={(v) => table.setFilter('status', v)}
-              options={STATUS_OPTIONS}
-            />
-            <FilterSelect
-              label="Type"
-              value={table.state.filters.type}
-              onChange={(v) => table.setFilter('type', v)}
-              options={TYPE_OPTIONS}
-            />
-            <FilterSelect
-              label="Difficulty"
-              value={table.state.filters.difficulty}
-              onChange={(v) => table.setFilter('difficulty', v)}
-              options={DIFFICULTY_OPTIONS}
-            />
-          </ToolbarGroup>
-          <ResultCount shown={visible.length} total={meta.totalItems} />
-        </Toolbar>
-
         {error ? (
           <ErrorState message={error} onRetry={onRetry} />
+        ) : loading ? (
+          <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((item) => (
+              <div key={item} className="h-44 animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
+            ))}
+          </div>
         ) : (
-          <>
-            <DataTable
-              columns={columns}
-              rows={visible}
-              rowKey={(q) => q.id}
-              loading={loading}
-              stickyHeader
-              onRowClick={(q) => setPreview(q)}
-              emptyTitle="No questions match these filters"
-              emptyDescription="Adjust the subject, type or difficulty filters to widen the search."
-            />
-            <Pagination
-              page={meta.page}
-              pageSize={meta.pageSize}
-              totalItems={meta.totalItems}
-              totalPages={meta.totalPages}
-              onPageChange={table.setPage}
-              onPageSizeChange={table.setPageSize}
-            />
-          </>
+          <div className="p-4 sm:p-5">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Browse by subject</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Select a subject to search, filter and manage its questions.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge tone="neutral">{formatNumber(meta.totalItems)} questions</Badge>
+                <Badge tone="neutral">{subjects.length} subjects</Badge>
+                <div className="w-60">
+                  <SearchBar
+                    value={subjectSearch}
+                    onChange={setSubjectSearch}
+                    placeholder="Find a subject…"
+                    label="Search subjects"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {visibleSubjects.length === 0 ? (
+              <EmptyState
+                icon={<BookOpen className="h-8 w-8" />}
+                title={subjects.length ? 'No subjects match your search' : 'No subjects yet'}
+                description={subjects.length ? 'Try another subject or course name.' : 'Create a subject in Categories, then add questions to it.'}
+              />
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {visibleSubjects.map((subject) => {
+                  const typeCounts = subject.questionTypeCounts ?? {}
+                  const availableTypes = Object.entries(QUESTION_TYPE_LABELS)
+                    .filter(([type]) => (typeCounts[type as Question['type']] ?? 0) > 0)
+                  return (
+                    <button
+                      key={subject.id}
+                      type="button"
+                      onClick={() => openSubject(subject)}
+                      className="group relative flex min-h-44 flex-col overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-white via-white to-indigo-50/70 p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cb-primary)] focus-visible:ring-offset-2"
+                    >
+                      <span className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-indigo-100/50 blur-2xl transition group-hover:bg-indigo-200/60" />
+                      <span className="relative flex w-full items-start justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate text-base font-semibold text-slate-900">{subject.name}</span>
+                          <span className="mt-1 block truncate text-xs text-slate-500">{subject.categoryName}</span>
+                        </span>
+                        <span className="shrink-0 rounded-lg bg-white/90 px-2.5 py-1.5 text-center shadow-sm ring-1 ring-slate-200/80">
+                          <span className="block text-lg font-bold leading-5 tabular-nums text-slate-900">{formatNumber(subject.questionCount)}</span>
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">questions</span>
+                        </span>
+                      </span>
+
+                      <span className="relative mt-5 flex flex-wrap gap-1.5">
+                        {availableTypes.length > 0 ? availableTypes.map(([type, label]) => (
+                          <span key={type} className="rounded-full border border-white bg-white/80 px-2 py-1 text-[10px] font-medium text-slate-600 shadow-sm">
+                            {label} · {typeCounts[type as Question['type']]}
+                          </span>
+                        )) : (
+                          <span className="text-xs text-slate-400">No questions added yet</span>
+                        )}
+                      </span>
+
+                      <span className="relative mt-auto flex items-center justify-between pt-5 text-xs font-semibold text-indigo-700">
+                        <span>{subject.code ? `Code ${subject.code}` : 'Open question bank'}</span>
+                        <span className="inline-flex items-center gap-1 opacity-70 transition group-hover:translate-x-0.5 group-hover:opacity-100">
+                          View questions <ArrowRight className="h-3.5 w-3.5" />
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )}
       </Panel>
+
+      <Modal
+        open={selectedSubject !== null}
+        onClose={() => setSelectedSubject(null)}
+        title={selectedSubject?.name ?? 'Subject questions'}
+        description={selectedSubject ? `${selectedSubject.categoryName} · ${formatNumber(selectedSubject.questionCount)} question(s)` : undefined}
+        size="full"
+      >
+        {selectedSubject && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-64 flex-1">
+                <SearchBar
+                  value={detailSearch}
+                  onChange={(value) => {
+                    setDetailSearch(value)
+                    setDetailPage(1)
+                  }}
+                  placeholder="Search question text…"
+                  label="Search questions in this subject"
+                />
+              </div>
+              <FilterSelect
+                label="Difficulty"
+                value={detailDifficulty}
+                onChange={(value) => { setDetailDifficulty(questionDifficultyFilter(value)); setDetailPage(1) }}
+                options={DIFFICULTY_OPTIONS}
+              />
+              <FilterSelect
+                label="Status"
+                value={detailStatus}
+                onChange={(value) => { setDetailStatus(questionStatusFilter(value)); setDetailPage(1) }}
+                options={STATUS_OPTIONS}
+              />
+              <FilterSelect
+                label="Type"
+                value={detailType}
+                onChange={(value) => { setDetailType(questionTypeFilter(value)); setDetailPage(1) }}
+                options={TYPE_OPTIONS}
+              />
+              <ResultCount
+                shown={subjectQuestions.data?.data.length ?? 0}
+                total={subjectQuestions.data?.meta.totalItems ?? 0}
+              />
+            </div>
+            {subjectQuestions.error ? (
+              <ErrorState
+                title="Could not load this subject’s questions"
+                message={errorMessage(subjectQuestions.error)}
+                onRetry={() => void subjectQuestions.refetch()}
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={columns}
+                  rows={subjectQuestions.data?.data ?? []}
+                  rowKey={(question) => question.id}
+                  loading={subjectQuestions.isPending || subjectQuestions.isFetching}
+                  stickyHeader
+                  onRowClick={setPreview}
+                  emptyTitle="No questions found"
+                  emptyDescription="Adjust the search or filters, or add questions to this subject."
+                />
+                {subjectQuestions.data?.meta && (
+                  <Pagination
+                    page={subjectQuestions.data.meta.page}
+                    pageSize={subjectQuestions.data.meta.pageSize}
+                    totalItems={subjectQuestions.data.meta.totalItems}
+                    totalPages={subjectQuestions.data.meta.totalPages}
+                    onPageChange={setDetailPage}
+                    onPageSizeChange={(pageSize) => {
+                      setDetailPageSize(pageSize)
+                      setDetailPage(1)
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <QuestionPreview question={preview} onClose={() => setPreview(null)} />
 

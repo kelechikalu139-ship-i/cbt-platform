@@ -84,24 +84,11 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-ink-950 px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          {settings?.logoUrl ? (
-            <img
-              src={settings.logoUrl}
-              alt=""
-              className="mx-auto mb-4 h-11 w-auto rounded-lg border border-white/20 bg-white/10"
-            />
-          ) : (
-            <div
-              className={cn(
-                'mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-lg',
-                settings?.primaryColor
-                  ? 'bg-[var(--cb-primary)] text-[var(--cb-primary-text)]'
-                  : 'bg-brand-600 text-white',
-              )}
-            >
-              C
-            </div>
-          )}
+          <img
+            src={settings?.logoUrl ?? '/brand-default.png'}
+            alt={`${settings?.schoolName ?? 'CBT'} logo`}
+            className="mx-auto mb-4 h-16 w-16 rounded-xl border border-white/20 bg-white p-1 object-contain shadow-sm"
+          />
           <h1 className="text-lg font-semibold text-white">
             {settings?.schoolName ?? 'CBT Administration'}
           </h1>

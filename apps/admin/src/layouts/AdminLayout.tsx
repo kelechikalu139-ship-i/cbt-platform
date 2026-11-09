@@ -54,7 +54,7 @@ export function AdminLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [navOpen])
 
-  const logoUrl = settings?.logoUrl ?? null
+  const logoUrl = settings?.logoUrl ?? '/brand-default.png'
   const primaryColor = settings?.primaryColor ?? null
 
   return (

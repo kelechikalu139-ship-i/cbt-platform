@@ -46,22 +46,11 @@ export const Sidebar = ({ branding }: SidebarProps) => {
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-white border-r border-gray-200">
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-200">
-          {branding?.logoUrl ? (
-            <img
-              src={branding.logoUrl}
-              alt={schoolName}
-              className="w-8 h-8 rounded-md object-cover border border-slate-200 bg-slate-50"
-            />
-          ) : (
-            <div
-              className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center font-bold',
-                'bg-[var(--cb-primary)] text-[var(--cb-primary-text)]',
-              )}
-            >
-              {branding?.schoolShortName?.charAt(0) ?? 'C'}
-            </div>
-          )}
+          <img
+            src={branding?.logoUrl ?? '/brand-default.png'}
+            alt={schoolName}
+            className="w-8 h-8 rounded-md object-contain border border-slate-200 bg-slate-50 p-0.5"
+          />
           <span className="text-xl font-semibold text-gray-900 truncate">{schoolName}</span>
         </div>
 

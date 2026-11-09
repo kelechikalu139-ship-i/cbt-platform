@@ -11,7 +11,7 @@ export interface ModalProps {
   description?: ReactNode
   children?: ReactNode
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   /** Prevents closing by backdrop click or Escape, for in-progress work. */
   dismissible?: boolean
 }
@@ -21,6 +21,7 @@ const SIZES = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  full: 'max-w-none',
 } as const
 
 /**
@@ -143,6 +144,7 @@ export function Modal({
         tabIndex={-1}
         className={cn(
           'relative z-10 w-full animate-slide-up rounded-lg bg-white shadow-pop outline-none',
+          size === 'full' && 'flex h-[calc(100vh-2rem)] flex-col',
           SIZES[size],
         )}
       >
@@ -162,7 +164,16 @@ export function Modal({
           </button>
         </header>
 
-        {children && <div className="max-h-[65vh] overflow-y-auto px-5 py-4 scrollbar-thin">{children}</div>}
+        {children && (
+          <div
+            className={cn(
+              'overflow-y-auto px-5 py-4 scrollbar-thin',
+              size === 'full' ? 'min-h-0 flex-1' : 'max-h-[65vh]',
+            )}
+          >
+            {children}
+          </div>
+        )}
 
         {footer && (
           <footer className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">

@@ -386,7 +386,20 @@ export const mockCategoriesApi = {
     )
   },
 
-  subjects: (): Promise<Subject[]> => respond(fx.subjects),
+  subjects: (): Promise<Subject[]> =>
+    respond(fx.subjects.map((subject) => {
+      const questionTypeCounts = fx.questions
+        .filter((question) => question.subjectId === subject.id)
+        .reduce<NonNullable<Subject['questionTypeCounts']>>((counts, question) => {
+          counts[question.type] = (counts[question.type] ?? 0) + 1
+          return counts
+        }, {})
+      return {
+        ...subject,
+        questionCount: Object.values(questionTypeCounts).reduce((total, count) => total + count, 0),
+        questionTypeCounts,
+      }
+    })),
 
   create: (payload: CategoryInput): Promise<Category> => {
     const newCategory: Category = {
