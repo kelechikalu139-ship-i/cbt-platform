@@ -310,7 +310,7 @@ export async function login(input: LoginInput, context: RequestContext): Promise
     email: user.email,
     role: user.role.code,
   })
-  const refresh = signRefreshToken(user.id)
+  const refresh = signRefreshToken(user.id, undefined, '30d')
   const refreshDigest = hashTokenDigest(refresh.token)
 
   // The sign-in record shares one transaction so a successful sign-in always
@@ -420,7 +420,7 @@ export async function register(
     email: user.email,
     role: user.role.code,
   })
-  const refresh = signRefreshToken(user.id)
+  const refresh = signRefreshToken(user.id, undefined, '30d')
   const refreshDigest = hashTokenDigest(refresh.token)
 
   await prisma.user.update({
@@ -624,7 +624,7 @@ export async function studentLogin(
     role: user.role.code,
     sid: sessionId,
   })
-  const refresh = signRefreshToken(user.id)
+  const refresh = signRefreshToken(user.id, sessionId)
   const refreshDigest = hashTokenDigest(refresh.token)
 
   await prisma.$transaction(async (tx) => {
@@ -737,7 +737,11 @@ export async function refresh(refreshToken: string, context: RequestContext): Pr
     role: user.role.code,
     ...(isStudent ? { sid: sessionId } : {}),
   })
-  const nextRefresh = signRefreshToken(user.id)
+  const nextRefresh = signRefreshToken(
+    user.id,
+    isStudent ? sessionId : undefined,
+    isStudent ? undefined : '30d',
+  )
 
   await prisma.user.update({
     where: { id: user.id },

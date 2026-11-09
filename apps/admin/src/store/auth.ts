@@ -7,8 +7,8 @@ import { hasAnyPermission, hasPermission } from '../utils/permissions'
  * Session state for the admin application.
  *
  * The token is persisted so a page refresh during UI review does not sign the
- * administrator out. The token is short-lived and server-validated; nothing here
- * is a trust boundary.
+ * administrator out. Access tokens are short-lived and renewed from a
+ * server-validated refresh token; nothing here is a trust boundary.
  *
  * Permissions are stored as the server issued them. They are never recomputed
  * locally, because a client-side grant table is a second source of truth that
@@ -18,13 +18,14 @@ import { hasAnyPermission, hasPermission } from '../utils/permissions'
 interface AuthStore {
   user: User | null
   token: string | null
+  refreshToken: string | null
   /**
    * False until the provider has decided whether a persisted token is still
    * valid. Routes wait on this to avoid flashing protected chrome for a
    * signed-out visitor.
    */
   isHydrated: boolean
-  setSession: (user: User, token: string) => void
+  setSession: (user: User, token: string, refreshToken?: string | null) => void
   setUser: (user: User | null) => void
   setHydrated: (value: boolean) => void
   logout: () => void
@@ -37,16 +38,17 @@ export const useAuthStore = create<AuthStore>()(
     (set) => ({
       user: null,
       token: null,
+      refreshToken: null,
       isHydrated: false,
-      setSession: (user, token) => set({ user, token }),
+      setSession: (user, token, refreshToken = null) => set({ user, token, refreshToken }),
       setUser: (user) => set({ user }),
       setHydrated: (isHydrated) => set({ isHydrated }),
-      logout: () => set({ user: null, token: null }),
+      logout: () => set({ user: null, token: null, refreshToken: null }),
     }),
     {
       name: TOKEN_STORAGE_KEY,
       // `isHydrated` is deliberately not persisted: it must re-run on every load.
-      partialize: (state) => ({ user: state.user, token: state.token }),
+      partialize: (state) => ({ user: state.user, token: state.token, refreshToken: state.refreshToken }),
       // Do NOT release the router from `onRehydrateStorage`. It fires as soon as
       // localStorage is read, which is before the async session check in
       // AuthProvider finishes, and that raced a signed-in user to the login
@@ -56,12 +58,13 @@ export const useAuthStore = create<AuthStore>()(
 )
 
 export function useAuth() {
-  const { user, token, logout, isHydrated, setSession } = useAuthStore()
+  const { user, token, refreshToken, logout, isHydrated, setSession } = useAuthStore()
   const isAuthenticated = !!token && !!user
 
   return {
     user,
     token,
+    refreshToken,
     isHydrated,
     isAuthenticated,
     logout,

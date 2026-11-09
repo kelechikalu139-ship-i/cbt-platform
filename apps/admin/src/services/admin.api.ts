@@ -71,7 +71,8 @@ export const realAuthApi = {
    */
   login: (identifier: string, password: string) =>
     http.post<LoginResponse>('/auth/login', { email: identifier, password }),
-  logout: () => http.post<void>('/auth/logout'),
+  logout: (refreshToken?: string | null) => http.post<void>('/auth/logout', { refreshToken }),
+  refresh: (refreshToken: string) => http.post<LoginResponse>('/auth/refresh', { refreshToken }),
   changePassword: (currentPassword: string, newPassword: string) =>
     http.post<void>('/auth/change-password', { currentPassword, newPassword }),
   /**
@@ -213,7 +214,12 @@ export const realQuestionsApi = {
       difficulty?: string
       status?: string
     } = {},
-  ) => http.get<Paginated<Question>>('/questions', { query: query as Query }),
+  ) => {
+    const { pageSize, ...filters } = query
+    return http.get<Paginated<Question>>('/questions', {
+      query: { ...filters, limit: pageSize } as Query,
+    })
+  },
   get: (id: string) => http.get<Question>(`/questions/${id}`),
   create: (payload: QuestionInput) => http.post<Question>('/questions', payload),
   update: (id: string, payload: Partial<QuestionInput>) =>

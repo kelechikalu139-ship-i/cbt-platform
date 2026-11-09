@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CircleSlash,
+  Camera,
   MonitorPlay,
   Pause,
   Plus,
@@ -74,9 +75,11 @@ function CameraFeed({
     refetchInterval: 30_000,
   })
   const latest = snapshots.data?.[0]
+  const latestId = latest?.id
+  const latestUrl = latest?.url
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!latest) {
+    if (!latestUrl) {
       setImageUrl(null)
       return
     }
@@ -89,7 +92,7 @@ function CameraFeed({
       stored = {}
     }
     const authScheme = ['Bea', 'rer'].join('')
-    void fetch(latest.url, {
+    void fetch(latestUrl, {
       headers: stored.state?.token ? { Authorization: `${authScheme} ${stored.state.token}` } : {},
     })
       .then((response) => response.ok ? response.blob() : Promise.reject(new Error('Snapshot unavailable')))
@@ -105,7 +108,7 @@ function CameraFeed({
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [latest?.id])
+  }, [latestId, latestUrl])
   return (
     <Panel>
       <PanelHeader
@@ -175,6 +178,7 @@ export function LiveMonitorPage() {
   const [extendMinutes, setExtendMinutes] = useState(10)
   /** Polling is opt-out: an invigilator watching one hall does not need it. */
   const [polling, setPolling] = useState(true)
+  const [view, setView] = useState<'students' | 'cameras'>('students')
   const nowMs = useTicker()
 
   const query = useQuery({
@@ -421,7 +425,32 @@ export function LiveMonitorPage() {
         </Panel>
       )}
 
-      <Panel>
+      <div role="tablist" aria-label="Live exam monitor view" className="flex w-fit gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'students'}
+          onClick={() => setView('students')}
+          className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-medium ${view === 'students' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+        >
+          <MonitorPlay className="h-4 w-4" />
+          Students writing
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 tabular-nums">{sessions.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'cameras'}
+          onClick={() => setView('cameras')}
+          className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-medium ${view === 'cameras' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+        >
+          <Camera className="h-4 w-4" />
+          Camera feeds
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 tabular-nums">{sessions.length}</span>
+        </button>
+      </div>
+
+      {view === 'students' && <Panel>
         <PanelHeader
           title="Attempts in progress"
           description={polling ? 'Refreshes automatically every 30 seconds' : 'Auto-refresh paused'}
@@ -441,9 +470,9 @@ export function LiveMonitorPage() {
             <DataTable columns={columns} rows={sessions} rowKey={(s) => s.sessionId} />
           )}
         </PanelBody>
-      </Panel>
+      </Panel>}
 
-      {sessions.length > 0 && (
+      {view === 'cameras' && (sessions.length > 0 ? (
         <div>
           <div className="mb-3">
             <h2 className="text-sm font-semibold text-slate-800">Candidate camera feeds</h2>
@@ -460,7 +489,13 @@ export function LiveMonitorPage() {
             ))}
           </div>
         </div>
-      )}
+      ) : (
+        <EmptyState
+          icon={<Camera className="h-8 w-8" />}
+          title="No camera feeds yet"
+          description="Students appear here after starting an exam and allowing camera access. Camera capture requires a secure HTTPS origin in modern browsers."
+        />
+      ))}
 
       {confirmCopy && action && (
         <ConfirmDialog

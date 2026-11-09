@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardList, Layers, PlusCircle, Search, Trash2, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Layers,
+  PlusCircle,
+  Search,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import {
   Alert,
   Button,
@@ -29,6 +39,8 @@ import {
   type Subject,
 } from '../../types'
 import { toDecimalNumber } from '../../utils'
+import { questionsApi } from '../../services'
+import type { Question } from '../../types'
 
 const LEVELS = STUDENT_LEVELS as readonly number[]
 const SEMESTERS = [1, 2, 3, 4, 5, 6] as const
@@ -131,6 +143,8 @@ export function ExamEditor({
   const [poolTypes, setPoolTypes] = useState<QuestionType[]>([])
   const [poolDifficulties, setPoolDifficulties] = useState<Difficulty[]>([])
   const [manualIds, setManualIds] = useState('')
+  const [manualSearch, setManualSearch] = useState('')
+  const [manualPage, setManualPage] = useState(1)
 
   const [durationMinutes, setDurationMinutes] = useState(60)
   const [passPercentage, setPassPercentage] = useState(50)
@@ -255,6 +269,32 @@ export function ExamEditor({
         .filter(Boolean),
     [manualIds],
   )
+  const questionPicker = useQuery({
+    queryKey: ['exam-question-picker', manualSearch, manualPage],
+    queryFn: () =>
+      questionsApi.list({
+        page: manualPage,
+        pageSize: 100,
+        search: manualSearch || undefined,
+        status: 'ACTIVE',
+      }),
+    enabled: open && sourceMode === 'manual',
+  })
+  const groupedPickerQuestions = useMemo(() => {
+    const groups = new Map<string, Question[]>()
+    for (const question of questionPicker.data?.data ?? []) {
+      const group = `${question.categoryName} · ${question.subjectName}`
+      groups.set(group, [...(groups.get(group) ?? []), question])
+    }
+    return [...groups.entries()]
+  }, [questionPicker.data])
+
+  const toggleManualQuestion = (questionId: string, selected: boolean) => {
+    const next = selected
+      ? [...manualIdList, questionId]
+      : manualIdList.filter((id) => id !== questionId)
+    setManualIds(next.join(', '))
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -699,17 +739,100 @@ export function ExamEditor({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <Textarea
-                    label="Question ids (comma-separated)"
-                    value={manualIds}
-                    onChange={(e) => setManualIds(e.target.value)}
-                    rows={4}
-                    placeholder="550e8400-e29b-41d4-a716-446655440000, 6ba7b810-9dad-11d1-80b4-00c04fd430c8"
-                  />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="sr-only" htmlFor="manual-question-search">Search active questions</label>
+                    <input
+                      id="manual-question-search"
+                      type="search"
+                      value={manualSearch}
+                      onChange={(event) => {
+                        setManualSearch(event.target.value)
+                        setManualPage(1)
+                      }}
+                      placeholder="Search uploaded questions…"
+                      className="h-9 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-[var(--cb-primary)] sm:max-w-sm"
+                    />
+                    <span className="shrink-0 text-xs tabular-nums text-slate-500">
+                      {manualIdList.length} selected
+                    </span>
+                  </div>
+                  {questionPicker.isPending ? (
+                    <p className="rounded-md border border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Loading question cards…</p>
+                  ) : questionPicker.isError ? (
+                    <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                      Could not load questions. Retry the request or use the question bank to verify the upload.
+                      <button type="button" className="ml-1 font-semibold underline" onClick={() => void questionPicker.refetch()}>Retry</button>
+                    </p>
+                  ) : groupedPickerQuestions.length === 0 ? (
+                    <p className="rounded-md border border-slate-200 px-3 py-6 text-center text-sm text-slate-500">
+                      No active questions match this search. Add or activate questions in the Question Bank.
+                    </p>
+                  ) : (
+                    <div className="max-h-80 space-y-4 overflow-y-auto rounded-md border border-slate-200 p-3">
+                      {groupedPickerQuestions.map(([group, groupQuestions]) => (
+                        <section key={group} aria-label={group}>
+                          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{group}</h4>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {groupQuestions.map((question) => {
+                              const selected = manualIdList.includes(question.id)
+                              return (
+                                <button
+                                  key={question.id}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() => toggleManualQuestion(question.id, !selected)}
+                                  className={`rounded-lg border p-3 text-left transition-colors ${selected ? 'border-[var(--cb-primary)] bg-indigo-50 ring-1 ring-[var(--cb-primary)]' : 'border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50'}`}
+                                >
+                                  <span className="flex items-start gap-2">
+                                    <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${selected ? 'border-[var(--cb-primary)] bg-[var(--cb-primary)] text-white' : 'border-slate-300 text-transparent'}`}>✓</span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="line-clamp-3 block text-sm leading-5 text-slate-800">{question.stem}</span>
+                                      <span className="mt-2 flex items-center justify-between gap-2 text-2xs text-slate-500">
+                                        <span className="truncate">{question.type.replace(/_/g, ' ')} · {question.difficulty}</span>
+                                        <span className="shrink-0">{question.points} pts</span>
+                                      </span>
+                                    </span>
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  )}
+                  {questionPicker.data?.meta && questionPicker.data.meta.totalPages > 1 && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-slate-500">
+                        Page {questionPicker.data.meta.page} of {questionPicker.data.meta.totalPages}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          icon={<ChevronLeft className="h-3.5 w-3.5" />}
+                          disabled={manualPage <= 1}
+                          onClick={() => setManualPage((page) => page - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          icon={<ChevronRight className="h-3.5 w-3.5" />}
+                          disabled={manualPage >= questionPicker.data.meta.totalPages}
+                          onClick={() => setManualPage((page) => page + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-slate-500">
-                    {manualIdList.length} id(s) entered. Question ids are shown on
-                    the Question Bank screen.
+                    Select question cards to add them to the examination. Your selections remain while you browse pages.
                   </p>
                 </div>
               )}

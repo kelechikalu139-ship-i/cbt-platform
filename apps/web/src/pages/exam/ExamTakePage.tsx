@@ -62,9 +62,11 @@ export const ExamTakePage: React.FC = () => {
   const [cameraError, setCameraError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!navigator.mediaDevices?.getUserMedia) {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setCameraStatus('unavailable')
-      setCameraError('Camera monitoring requires a supported browser and a secure HTTPS connection.')
+      setCameraError(
+        'This browser blocks camera access on HTTP LAN addresses. Use the trusted HTTPS exam address to enable monitoring; you can still continue the exam.',
+      )
       return
     }
     let stream: MediaStream | null = null
@@ -339,7 +341,7 @@ export const ExamTakePage: React.FC = () => {
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       {/* ------------------------------------------------------------ header */}
-      <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm sm:px-6">
+      <div className="sticky top-2 z-10 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-md sm:px-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="truncate font-semibold text-gray-900">{session.exam.title}</h1>
@@ -347,7 +349,7 @@ export const ExamTakePage: React.FC = () => {
               <span>
                 Question {currentQ + 1} of {questions.length}
               </span>
-              <span aria-hidden>�</span>
+              <span aria-hidden>·</span>
               <span className="font-medium text-indigo-600">
                 {answeredCount} answered
               </span>
@@ -417,7 +419,12 @@ export const ExamTakePage: React.FC = () => {
       {/* ----------------------------------------------------------- question */}
       <Card>
         <div className="mb-4 flex items-center justify-between">
-          <Badge variant="info">Question {currentQ + 1}</Badge>
+          <Badge variant="info">
+            <span className="inline-flex min-w-8 items-center justify-center tabular-nums">
+              {currentQ + 1}
+            </span>
+            <span className="ml-1">of {questions.length}</span>
+          </Badge>
           <span className="text-sm text-gray-500">{question.points} pts</span>
         </div>
         <p className="mb-6 text-lg font-medium leading-relaxed text-gray-900">
@@ -563,11 +570,10 @@ export const ExamTakePage: React.FC = () => {
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
                 )}
               >
-                {answered && i !== currentQ ? (
-                  <CheckCircle2 className="mx-auto h-4 w-4" aria-hidden />
-                ) : (
-                  i + 1
-                )}
+                <span className="inline-flex h-full w-full items-center justify-center gap-1">
+                  <span className="tabular-nums">{i + 1}</span>
+                  {answered && <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
+                </span>
               </button>
             )
           })}

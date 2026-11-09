@@ -68,8 +68,8 @@ export function LoginPage() {
     try {
       // The API returns the user and the access token together, so the session
       // is established from one response instead of a follow-up /auth/me call.
-      const { user, accessToken } = await authApi.login(identifier.trim(), password)
-      setSession(user, accessToken)
+      const { user, accessToken, refreshToken } = await authApi.login(identifier.trim(), password)
+      setSession(user, accessToken, refreshToken)
       await queryClient.invalidateQueries()
       const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })

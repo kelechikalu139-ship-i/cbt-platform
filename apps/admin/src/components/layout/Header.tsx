@@ -29,14 +29,20 @@ export function Header({
 }: HeaderProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, refreshToken, setSession, logout } = useAuth()
   const current = findNavItem(pathname)
 
   const handleSignOut = async () => {
     try {
       // Revoke the server-side refresh token first: a local-only
       // sign-out leaves the old token bundle valid until it rotates.
-      await authApi.logout()
+      if (refreshToken) {
+        const renewed = await authApi.refresh(refreshToken)
+        setSession(renewed.user, renewed.accessToken, renewed.refreshToken)
+        await authApi.logout(renewed.refreshToken)
+      } else {
+        await authApi.logout()
+      }
     } catch {
       // A failed request still clears local state; the stored token
       // stops being accepted once it rotates.

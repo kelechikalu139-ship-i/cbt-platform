@@ -35,13 +35,13 @@ export function RegisterPage() {
     setError('')
     setSubmitting(true)
     try {
-      const { user, accessToken } = await authApi.register({
+      const { user, accessToken, refreshToken } = await authApi.register({
         email: email.trim(),
         password,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
       })
-      setSession(user, accessToken)
+      setSession(user, accessToken, refreshToken)
       const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })
     } catch (err) {

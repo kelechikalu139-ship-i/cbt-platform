@@ -104,6 +104,7 @@ export function QuestionsPage({
     mutationFn: (payload: QuestionInput) => questionMutations.create(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['questions'] })
+      void queryClient.invalidateQueries({ queryKey: ['exam-question-picker'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setAddOpen(false)
       setMutationError(null)
@@ -118,6 +119,7 @@ export function QuestionsPage({
       questionMutations.update(id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['questions'] })
+      void queryClient.invalidateQueries({ queryKey: ['exam-question-picker'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setEditTarget(null)
       setMutationError(null)
@@ -134,6 +136,7 @@ export function QuestionsPage({
     }) => questionsApi.bulkImport(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['questions'] })
+      void queryClient.invalidateQueries({ queryKey: ['exam-question-picker'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['question-categories'] })
       void queryClient.invalidateQueries({ queryKey: ['question-subjects'] })

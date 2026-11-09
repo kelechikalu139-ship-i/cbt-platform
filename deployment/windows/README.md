@@ -71,6 +71,8 @@ After installation:
 - CBT's MariaDB service listens only on `127.0.0.1` at the selected port; the database port is not opened on the LAN. The installer adds an inbound rule for CBT port 5000 only on Domain and Private profiles.
 - Same-origin browser requests work through the server's LAN IP or hostname; cross-origin requests remain restricted to the configured CORS allow-list.
 - Configuration, uploads, logs, and backups live under `%ProgramData%\The Platform CBT`.
+- Staff sessions refresh automatically while the administrator portal is open and can remain signed in for up to 30 days between visits. Signing out revokes the refresh token.
+- Webcam capture is subject to browser secure-context rules: browsers do not grant camera access to a student portal opened over plain HTTP at a LAN IP. Camera capture requires HTTPS with a certificate trusted by each student PC; the exam itself remains usable over HTTP.
 
 ## Upgrade and uninstall
 

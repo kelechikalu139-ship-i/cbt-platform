@@ -90,7 +90,14 @@ export const authApi = pick(
         tokenType: 'Bearer',
       }
     },
-    logout: async (): Promise<void> => undefined,
+    logout: async (_refreshToken?: string | null): Promise<void> => undefined,
+    refresh: async (): Promise<LoginResponse> => ({
+      user: await mocks.mockUsersApi.me(),
+      accessToken: 'mock-access-token',
+      refreshToken: 'mock-refresh-token',
+      expiresIn: 900,
+      tokenType: 'Bearer',
+    }),
     changePassword: async (): Promise<void> => undefined,
   },
   realAuthApi,

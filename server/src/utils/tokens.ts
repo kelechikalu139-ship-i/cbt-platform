@@ -66,14 +66,18 @@ export function signAccessToken(payload: Omit<AccessTokenPayload, 'typ'>): Signe
   return { token, expiresIn: env.JWT_ACCESS_EXPIRES_IN }
 }
 
-export function signRefreshToken(userId: string, sid?: string): SignedToken {
+export function signRefreshToken(
+  userId: string,
+  sid?: string,
+  expiresIn: SignOptions['expiresIn'] = refreshExpiresIn,
+): SignedToken {
   const jti = randomBytes(16).toString('hex')
   const token = jwt.sign({ sub: userId, sid, jti, typ: 'refresh' }, env.JWT_REFRESH_SECRET, {
-    expiresIn: refreshExpiresIn,
+    expiresIn,
     algorithm: 'HS256',
   })
 
-  return { token, expiresIn: env.JWT_REFRESH_EXPIRES_IN }
+  return { token, expiresIn: String(expiresIn) }
 }
 
 /**
