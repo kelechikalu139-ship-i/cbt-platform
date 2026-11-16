@@ -53,4 +53,8 @@ The portal issues activation credentials. Host the installer at a stable HTTPS U
 
 The download button is not shown for a missing or non-HTTPS URL. Render Static Sites serve files from the published build output; they do not have a manual file-upload area, and the 146 MB installer must not be committed as a regular Git file. For a test download, upload the unsigned installer to an HTTPS file host such as a public object-storage bucket, then set the Render build variable to its direct download URL. Clearly keep that test build for internal testing only. Do not send it to clients. A signed, clean-install-validated client release is not available yet.
 
+## CAOSCE client installation
+
+The dashboard can optionally show a separate **Download CAOSCE installer** button. Leave `VITE_CAOSCE_INSTALLER_URL` blank while the CAOSCE installer is still being developed; the button remains hidden and the CBT installer is unaffected. When the installer is ready, host it at a stable HTTPS URL, set this variable in the portal's build environment, and redeploy. This only adds a download link; it does not add CAOSCE licensing or installation logic.
+
 The portal only accepts the API origin configured in `PORTAL_ORIGIN`; keep the portal and API origins aligned. Development defaults to `http://127.0.0.1:18080` for the API. Restart Vite after changing environment configuration. For a production build, set `VITE_LICENSING_API_URL` to the public HTTPS API origin before running `npm run build`.

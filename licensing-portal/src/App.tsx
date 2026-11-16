@@ -23,6 +23,7 @@ const API = configuredApiUrl
 const API_CONFIGURATION_ERROR =
   "The licensing API URL is not configured. Set VITE_LICENSING_API_URL to your licensing-service HTTPS origin in the Render Static Site environment, then redeploy the portal.";
 const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
+const configuredCaosceInstallerUrl = import.meta.env.VITE_CAOSCE_INSTALLER_URL?.trim();
 const FALLBACK_INSTALLER_URL =
   "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/latest/download/The-Platform-CBT-Setup-latest.exe";
 
@@ -117,6 +118,10 @@ export default function App() {
   const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
     normalizeDownloadUrl(FALLBACK_INSTALLER_URL),
   );
+  const caosceInstallerDownloadUrl =
+    configuredCaosceInstallerUrl && /^https:\/\//i.test(configuredCaosceInstallerUrl)
+      ? normalizeDownloadUrl(configuredCaosceInstallerUrl)
+      : null;
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
     [issued, setIssued] = useState<any>(null);
@@ -585,6 +590,16 @@ export default function App() {
             }
           >
             <Download size={16} /> Download CBT installer
+          </button>
+        )}
+        {caosceInstallerDownloadUrl && (
+          <button
+            className="secondary"
+            onClick={() =>
+              window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")
+            }
+          >
+            <Download size={16} /> Download CAOSCE installer
           </button>
         )}
         <button
