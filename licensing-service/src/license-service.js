@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 export const hashKey = (value) => crypto.createHash('sha256').update(value.replace(/[^a-z0-9]/gi, '').toUpperCase()).digest('hex')
-const productKeyPrefixes = { 'nurse-cbt': 'NCBT', 'caosce-platform': 'CAOSCE' }
+const productKeyPrefixes = { 'nurse-cbt': 'NCBT', 'caosce-platform': 'NCBT' }
 export function generateActivationKey(product = 'nurse-cbt') {
   const prefix = productKeyPrefixes[product]
   if (!prefix) throw new Error('Unsupported licence product')

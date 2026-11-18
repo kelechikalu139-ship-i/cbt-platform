@@ -69,7 +69,7 @@ test(
     let caosceLicenseId = null;
     const externalApiUrl = process.env.LICENSING_TEST_API_URL?.replace(/\/$/, "");
     let jwtSecret = process.env.JWT_SECRET;
-    const adminEmail = `http-admin-${crypto.randomUUID()}@example.invalid`;
+    let adminEmail = `http-admin-${crypto.randomUUID()}@example.invalid`;
     const adminId = crypto.randomUUID();
     let apiUrl;
     let child = null;
@@ -107,7 +107,7 @@ test(
       assert.equal(databaseRows[0].name, "cbt_licensing_platform", "tests must use the dedicated local licensing database");
       assert.ok(jwtSecret, "local administrator JWT configuration is required for lifecycle testing");
       await pool.query(
-        "INSERT INTO licensing_admins (id,email,password_hash,role) VALUES ($1,$2,'unused-test-hash','SUPER_ADMIN')",
+        "INSERT INTO licensing_admins (id,email,password_hash,role,mfa_enabled) VALUES ($1,$2,'unused-test-hash','SUPER_ADMIN',TRUE)",
         [adminId, adminEmail],
       );
       const adminToken = jwt.sign(
@@ -171,7 +171,7 @@ test(
       const caosceIssuedBody = await caosceIssued.json();
       caosceLicenseId = caosceIssuedBody.data.id;
       assert.equal(caosceIssuedBody.data.product, "caosce-platform");
-      assert.ok(caosceIssuedBody.data.activationKey.startsWith("CAOSCE-"));
+      assert.match(caosceIssuedBody.data.activationKey, /^NCBT-(?:[A-F0-9]{5}-){7}[A-F0-9]{5}$/);
 
       const activate = async (targetInstallationId) => fetch(`${apiUrl}/api/public/activate`, {
         method: "POST",

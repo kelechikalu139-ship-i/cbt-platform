@@ -26,6 +26,7 @@ const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
 const configuredCaosceInstallerUrl = import.meta.env.VITE_CAOSCE_INSTALLER_URL?.trim();
 const FALLBACK_INSTALLER_URL =
   "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/latest/download/The-Platform-CBT-Setup-latest.exe";
+const CAOSCE_RELEASES_URL = "https://github.com/kelechikalu139-ship-i/CAOSCE_platform/releases";
 
 function normalizeDownloadUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -37,6 +38,10 @@ function normalizeDownloadUrl(value: string | undefined): string | null {
     return null;
   }
 }
+function normalizeHttpsDownloadUrl(value: string | undefined): string | null {
+  const normalized = normalizeDownloadUrl(value);
+  return normalized?.startsWith("https://") ? normalized : null;
+}
 type Licence = {
   id: string;
   product: ProductId;
@@ -44,7 +49,7 @@ type Licence = {
   institution_name: string;
   contact_email?: string;
   plan: string;
-  status: string;
+  status: "PENDING" | "ACTIVE" | "EXPIRED" | "SUSPENDED" | "REVOKED";
   installation_id?: string;
   max_candidates: number;
   issued_at: string;
@@ -133,15 +138,19 @@ export default function App() {
     [loginBusy, setLoginBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [productFilter, setProductFilter] = useState<"all" | ProductId>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | Licence["status"]>("all");
   const [searchText, setSearchText] = useState("");
   const [issueBusy, setIssueBusy] = useState(false);
+  const [copyNotice, setCopyNotice] = useState("");
   const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
     normalizeDownloadUrl(FALLBACK_INSTALLER_URL),
   );
-  const caosceInstallerDownloadUrl =
-    configuredCaosceInstallerUrl && /^https:\/\//i.test(configuredCaosceInstallerUrl)
-      ? normalizeDownloadUrl(configuredCaosceInstallerUrl)
-      : null;
+  const [caosceInstallerDownloadUrl, setCaosceInstallerDownloadUrl] = useState<string | null>(() =>
+    normalizeHttpsDownloadUrl(configuredCaosceInstallerUrl),
+  );
+  const [caosceReleaseStatus, setCaosceReleaseStatus] = useState<"checking" | "available" | "missing" | "unavailable">(
+    normalizeHttpsDownloadUrl(configuredCaosceInstallerUrl) ? "available" : "checking",
+  );
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
     [issued, setIssued] = useState<IssuedLicence | null>(null);
@@ -177,6 +186,30 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => {
+    if (caosceInstallerDownloadUrl) return;
+    let cancelled = false;
+    void fetch("https://api.github.com/repos/kelechikalu139-ship-i/CAOSCE_platform/releases/latest")
+      .then(async (response) => {
+        if (!response.ok) {
+          if (!cancelled) setCaosceReleaseStatus("unavailable");
+          return;
+        }
+        const release = await response.json() as { assets?: Array<{ browser_download_url?: string; name?: string }> };
+        const installer = release.assets?.find((asset) =>
+          /\.(?:exe|msi)$/i.test(asset.name ?? "") && /(?:caosce|setup|installer)/i.test(asset.name ?? ""),
+        );
+        const resolved = normalizeHttpsDownloadUrl(installer?.browser_download_url);
+        if (!cancelled) {
+          setCaosceInstallerDownloadUrl(resolved);
+          setCaosceReleaseStatus(resolved ? "available" : "missing");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCaosceReleaseStatus("unavailable");
+      });
+    return () => { cancelled = true; };
+  }, [caosceInstallerDownloadUrl]);
 
   async function request(path: string, opts: RequestInit = {}, authToken = token) {
     if (!API) throw new Error(API_CONFIGURATION_ERROR);
@@ -261,13 +294,14 @@ export default function App() {
   }, [token, user, authMode]);
   const visibleItems = items.filter((licence) => {
     const matchesProduct = productFilter === "all" || licence.product === productFilter;
+    const matchesStatus = statusFilter === "all" || licence.status === statusFilter;
     const query = searchText.trim().toLocaleLowerCase();
     const matchesSearch = !query || [
       licence.institution_name,
       licence.institution_id,
       licence.contact_email || "",
     ].some((value) => value.toLocaleLowerCase().includes(query));
-    return matchesProduct && matchesSearch;
+    return matchesProduct && matchesStatus && matchesSearch;
   });
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -459,6 +493,55 @@ export default function App() {
       setError(e.message);
     }
   }
+  function exportLicences() {
+    const columns = [
+      "Product",
+      "Institution ID",
+      "Institution",
+      "Contact email",
+      "Plan",
+      "Status",
+      "Candidate limit",
+      "Issued",
+      "Expires",
+      "Installation ID",
+      "Licence ID",
+    ];
+    const records = visibleItems.map((licence) => [
+      PRODUCT_NAMES[licence.product],
+      licence.institution_id,
+      licence.institution_name,
+      licence.contact_email || "",
+      licence.plan,
+      licence.status,
+      licence.max_candidates,
+      licence.issued_at,
+      licence.expires_at || "",
+      licence.installation_id || "",
+      licence.id,
+    ]);
+    const csvCell = (value: string | number) => {
+      const text = String(value);
+      const safeText = /^[\t\r ]*[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safeText.replace(/"/g, '""')}"`;
+    };
+    const csv = [columns, ...records].map((record) => record.map(csvCell).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `product-licences-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  async function copyProductKey() {
+    if (!issued) return;
+    try {
+      await navigator.clipboard.writeText(issued.activationKey);
+      setCopyNotice("Product key copied to clipboard.");
+    } catch {
+      setError("Clipboard access failed. Select the key and copy it manually.");
+    }
+  }
   if (authMode === "mfa-login" && !token)
     return (
       <main className="login">
@@ -630,12 +713,19 @@ export default function App() {
             </button>
           ) : (
             <button
-              className="secondary unavailable"
-              disabled
-              title="The CAOSCE Windows installer is not available yet."
+              className="secondary"
+              onClick={() => window.open(CAOSCE_RELEASES_URL, "_blank", "noopener,noreferrer")}
+              title="Open the CAOSCE release page to get the installer when it is published."
             >
-              <Download size={16} /> CAOSCE installer coming soon
+              <Download size={16} /> Browse CAOSCE releases
             </button>
+          )}
+          {!caosceInstallerDownloadUrl && (
+            <span className="hint download-note">
+              {caosceReleaseStatus === "checking" && "Checking for a published installer…"}
+              {caosceReleaseStatus === "missing" && "No installer release found yet."}
+              {caosceReleaseStatus === "unavailable" && "Release lookup unavailable; open the release page to check."}
+            </span>
           )}
         </div>
         <button
@@ -664,10 +754,11 @@ export default function App() {
           <code>{issued.activationKey}</code>
           <button
             className="secondary"
-            onClick={() => navigator.clipboard.writeText(issued.activationKey)}
+            onClick={() => void copyProductKey()}
           >
-            <Copy size={16} /> Copy key
+            <Copy size={16} /> Copy product key
           </button>
+          {copyNotice && <span className="hint" role="status">{copyNotice}</span>}
           {issued.signedLicense && (
             <button
               className="secondary"
@@ -687,7 +778,7 @@ export default function App() {
           {issued.product === "caosce-platform" && (
             <p className="hint" role="status">
               CAOSCE does not yet validate these keys in the application. Do not rely on this key for access control until app-side activation is integrated.
-              {!caosceInstallerDownloadUrl && " Its installer also has not been built and hosted yet."}
+              {!caosceInstallerDownloadUrl && " No CAOSCE installer is published in GitHub Releases yet."}
             </p>
           )}
           {issued.product === "caosce-platform" && caosceInstallerDownloadUrl && (
@@ -698,6 +789,14 @@ export default function App() {
               }
             >
               <Download size={16} /> Download CAOSCE installer
+            </button>
+          )}
+          {issued.product === "caosce-platform" && !caosceInstallerDownloadUrl && (
+            <button
+              className="secondary"
+              onClick={() => window.open(CAOSCE_RELEASES_URL, "_blank", "noopener,noreferrer")}
+            >
+              <Download size={16} /> Browse CAOSCE releases
             </button>
           )}
           <button className="close" onClick={() => setIssued(null)}>
@@ -726,7 +825,7 @@ export default function App() {
               </select>
               <span className="hint">
                 {form.product === "caosce-platform"
-                  ? `The installer ${caosceInstallerDownloadUrl ? "is available" : "is not published yet"}. CAOSCE app-side key enforcement still needs integration.`
+                  ? `${caosceInstallerDownloadUrl ? "Installer download is available." : "Use Browse CAOSCE releases to check for the installer."} CAOSCE app-side key enforcement still needs integration.`
                   : `This key is for ${PRODUCT_NAMES[form.product]} only.`}
               </span>
             </label>
@@ -817,7 +916,7 @@ export default function App() {
       )}
       {renewing && (
         <form className="panel formpanel" onSubmit={renew}>
-          <h2>Renew {renewing.institution_name}</h2>
+          <h2>Renew {PRODUCT_NAMES[renewing.product]} licence for {renewing.institution_name}</h2>
           <p className="muted">Renewal replaces the current activation key. The new key is shown once.</p>
           <div className="formgrid">
             <label>Plan<select value={renewForm.plan} onChange={(e) => setRenewForm({ ...renewForm, plan: e.target.value })}><option>TRIAL</option><option>STANDARD</option><option>PROFESSIONAL</option><option>ENTERPRISE</option></select></label>
@@ -830,7 +929,7 @@ export default function App() {
           </div>
         </form>
       )}
-      <section className="stats">
+      <section className="stats" aria-label="Licence summary">
         <div className="panel">
           <span>Total licences</span>
           <b>{items.length}</b>
@@ -846,6 +945,14 @@ export default function App() {
         <div className="panel">
           <span>Revoked</span>
           <b>{items.filter((x) => x.status === "REVOKED").length}</b>
+        </div>
+        <div className="panel">
+          <span>CBT licences</span>
+          <b>{items.filter((x) => x.product === "nurse-cbt").length}</b>
+        </div>
+        <div className="panel">
+          <span>CAOSCE licences</span>
+          <b>{items.filter((x) => x.product === "caosce-platform").length}</b>
         </div>
       </section>
       <section className="panel tablepanel">
@@ -882,6 +989,45 @@ export default function App() {
               <option value="caosce-platform">CAOSCE Platform</option>
             </select>
           </label>
+          <label className="filterfield">
+            <span className="visually-hidden">Filter by licence status</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                const value = e.target.value;
+                setStatusFilter(
+                  value === "all" ? "all" : value === "PENDING" || value === "ACTIVE" ||
+                    value === "EXPIRED" || value === "SUSPENDED" || value === "REVOKED"
+                    ? value
+                    : "all",
+                );
+              }}
+            >
+              <option value="all">All statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="ACTIVE">Active</option>
+              <option value="SUSPENDED">Suspended</option>
+              <option value="EXPIRED">Expired</option>
+              <option value="REVOKED">Revoked</option>
+            </select>
+          </label>
+          <div className="tabletool-actions">
+            {(searchText || productFilter !== "all" || statusFilter !== "all") && (
+              <button
+                className="secondary"
+                onClick={() => {
+                  setSearchText("");
+                  setProductFilter("all");
+                  setStatusFilter("all");
+                }}
+              >
+                Clear filters
+              </button>
+            )}
+            <button className="secondary" disabled={!visibleItems.length} onClick={exportLicences}>
+              <Download size={16} /> Export CSV
+            </button>
+          </div>
         </div>
         <div className="tablewrap">
           <table>

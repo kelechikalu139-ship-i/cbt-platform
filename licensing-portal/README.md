@@ -55,8 +55,14 @@ The CBT download button uses its existing release lookup and `VITE_CBT_INSTALLER
 
 ## CAOSCE client installation
 
-The dashboard offers a separate CAOSCE installer control, disabled until an HTTPS link is configured. The `CAOSCE_Platform` packaging guide currently describes its Windows installer as a scaffold, so there is no installer file to download yet. Once a signed, tested installer is built and hosted at a stable HTTPS URL, set `VITE_CAOSCE_INSTALLER_URL` in the portal's build environment and redeploy. Do not point it at a source archive or an unsigned development build.
+The dashboard offers a separate CAOSCE installer control. It checks the latest CAOSCE GitHub release for an `.exe` or `.msi`; when no installer is found, the control opens the product's Releases page instead. You can override discovery with `VITE_CAOSCE_INSTALLER_URL`, a direct HTTPS URL to the signed installer.
 
-The licence service now issues separate `nurse-cbt` and `caosce-platform` product keys and signs the corresponding product ID into each licence. Existing CBT rows are kept as `nurse-cbt`; the service adds the product column and replaces the institution-wide open-licence constraint with a per-product constraint at startup. The portal can therefore issue both products to one institution while preventing duplicate open licences for the same product. CAOSCE app-side activation/enforcement is not yet integrated: its client must validate the `caosce-platform` signed licence before these keys enforce access in that application.
+The `CAOSCE_Platform` packaging guide currently describes its Windows installer as a scaffold, and no installer package is present in that workspace or its GitHub releases. Therefore the portal can open the Releases page, but cannot download a CAOSCE installer until one is built and published. Do not point the download at a source archive or an unsigned development build.
+
+The licence service now issues separate `nurse-cbt` and `caosce-platform` product keys using the existing `NCBT-XXXXX-...` key format, and signs the corresponding product ID into each licence. Existing CBT rows are kept as `nurse-cbt`; the service adds the product column and replaces the institution-wide open-licence constraint with a per-product constraint at startup. The portal can therefore issue both products to one institution while preventing duplicate open licences for the same product. CAOSCE app-side activation/enforcement is not yet integrated: its client must validate the `caosce-platform` signed licence before these keys enforce access in that application.
 
 The portal only accepts the API origin configured in `PORTAL_ORIGIN`; keep the portal and API origins aligned. Development defaults to `http://127.0.0.1:18080` for the API. Restart Vite after changing environment configuration. For a production build, set `VITE_LICENSING_API_URL` to the public HTTPS API origin before running `npm run build`.
+
+## Licensing service integration tests
+
+From the repository root, run `npm --prefix licensing-service run test:integration`. The runner applies the schema and enables the HTTP/PostgreSQL integration tests only when `DATABASE_URL` targets the local `cbt_licensing_platform` test database; it refuses remote or differently named databases. Configure a local PostgreSQL database before running it.

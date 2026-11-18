@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { buildLicense, generateActivationKey } from "../src/license-service.js";
 
-test("activation keys identify their product while preserving the CBT format", () => {
+test("both products use the established CBT activation-key format", () => {
   assert.match(generateActivationKey(), /^NCBT-(?:[A-F0-9]{5}-){7}[A-F0-9]{5}$/);
-  assert.match(generateActivationKey("caosce-platform"), /^CAOSCE-(?:[A-F0-9]{5}-){7}[A-F0-9]{5}$/);
+  assert.match(generateActivationKey("caosce-platform"), /^NCBT-(?:[A-F0-9]{5}-){7}[A-F0-9]{5}$/);
   assert.throws(() => generateActivationKey("unknown-product"), /Unsupported licence product/);
 });
 
