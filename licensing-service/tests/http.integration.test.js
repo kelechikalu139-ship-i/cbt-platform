@@ -66,6 +66,7 @@ test(
     const institutionId = `http_test_${crypto.randomUUID().replaceAll("-", "_")}`;
     const installationId = crypto.randomUUID();
     let licenseId = null;
+    let caosceLicenseId = null;
     const externalApiUrl = process.env.LICENSING_TEST_API_URL?.replace(/\/$/, "");
     let jwtSecret = process.env.JWT_SECRET;
     const adminEmail = `http-admin-${crypto.randomUUID()}@example.invalid`;
@@ -151,6 +152,26 @@ test(
       licenseId = issuedBody.data.id;
       const activationKey = issuedBody.data.activationKey;
       assert.ok(activationKey);
+      assert.equal(issuedBody.data.product, "nurse-cbt");
+      assert.ok(activationKey.startsWith("NCBT-"));
+
+      const caosceIssued = await fetch(`${apiUrl}/api/admin/licenses`, {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({
+          product: "caosce-platform",
+          institutionName: "HTTP Integration Test Institution",
+          institutionId,
+          plan: "STANDARD",
+          maxCandidates: 100,
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      assert.equal(caosceIssued.status, 201, "the same institution may hold separate product licences");
+      const caosceIssuedBody = await caosceIssued.json();
+      caosceLicenseId = caosceIssuedBody.data.id;
+      assert.equal(caosceIssuedBody.data.product, "caosce-platform");
+      assert.ok(caosceIssuedBody.data.activationKey.startsWith("CAOSCE-"));
 
       const activate = async (targetInstallationId) => fetch(`${apiUrl}/api/public/activate`, {
         method: "POST",
@@ -163,7 +184,21 @@ test(
       assert.equal(first.status, 200);
       const firstBody = await first.json();
       assert.equal(firstBody.data.payload.installationId, installationId);
+      assert.equal(firstBody.data.payload.product, "nurse-cbt");
       assert.equal(firstBody.data.algorithm, "Ed25519");
+
+      const caosceActivation = await fetch(`${apiUrl}/api/public/activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activationKey: caosceIssuedBody.data.activationKey,
+          installationId: crypto.randomUUID(),
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      assert.equal(caosceActivation.status, 200);
+      const caosceActivationBody = await caosceActivation.json();
+      assert.equal(caosceActivationBody.data.payload.product, "caosce-platform");
 
       const retry = await activate(installationId);
       assert.equal(retry.status, 200, "retry from the bound installation is idempotent");
@@ -213,6 +248,10 @@ test(
       if (licenseId) {
         await pool.query("DELETE FROM license_events WHERE license_id=$1", [licenseId]).catch(() => {});
         await pool.query("DELETE FROM licenses WHERE id=$1", [licenseId]).catch(() => {});
+      }
+      if (caosceLicenseId) {
+        await pool.query("DELETE FROM license_events WHERE license_id=$1", [caosceLicenseId]).catch(() => {});
+        await pool.query("DELETE FROM licenses WHERE id=$1", [caosceLicenseId]).catch(() => {});
       }
       await pool.query("DELETE FROM licensing_admins WHERE id=$1", [adminId]).catch(() => {});
       await pool.end();

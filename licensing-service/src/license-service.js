@@ -1,8 +1,11 @@
 import crypto from 'node:crypto'
 export const hashKey = (value) => crypto.createHash('sha256').update(value.replace(/[^a-z0-9]/gi, '').toUpperCase()).digest('hex')
-export function generateActivationKey() {
+const productKeyPrefixes = { 'nurse-cbt': 'NCBT', 'caosce-platform': 'CAOSCE' }
+export function generateActivationKey(product = 'nurse-cbt') {
+  const prefix = productKeyPrefixes[product]
+  if (!prefix) throw new Error('Unsupported licence product')
   const raw = crypto.randomBytes(20).toString('hex').toUpperCase()
-  return `NCBT-${raw.match(/.{1,5}/g).join('-')}`
+  return `${prefix}-${raw.match(/.{1,5}/g).join('-')}`
 }
 export function signLicense(payload, privateKey) {
   const encodedPayload = Buffer.from(canonicalJson(payload)).toString('base64url')
@@ -22,7 +25,7 @@ export function buildLicense(row, installationId, privateKey) {
   const payload = {
     schemaVersion: 1, licenseId: row.id, institutionId: row.institution_id,
     institutionName: row.institution_name, plan: row.plan,
-    product: 'nurse-cbt',
+    product: row.product || 'nurse-cbt',
     maxCandidates: Number(row.max_candidates),
     issuedAt: new Date(row.issued_at).toISOString(),
     expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,

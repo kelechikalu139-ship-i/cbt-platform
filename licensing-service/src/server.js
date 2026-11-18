@@ -110,7 +110,22 @@ async function recordLicenseEvent(client, event) {
 
 const hashInvitationToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
+const licenseFeatureSchema = z
+  .array(
+    z.enum([
+      "cbt",
+      "question-bank",
+      "results",
+      "excel-export",
+      "pdf-export",
+      "backup-restore",
+      "osce",
+      "viva",
+    ]),
+  )
+  .max(20);
 const createSchema = z.object({
+  product: z.enum(["nurse-cbt", "caosce-platform"]).default("nurse-cbt"),
   institutionName: z.string().trim().min(2).max(190),
   institutionId: z
     .string()
@@ -124,28 +139,7 @@ const createSchema = z.object({
   plan: z.enum(["TRIAL", "STANDARD", "PROFESSIONAL", "ENTERPRISE"]),
   maxCandidates: z.number().int().min(1).max(100000),
   expiresAt: z.union([z.string().date(), z.null()]).optional(),
-  features: z
-    .array(
-      z.enum([
-        "cbt",
-        "question-bank",
-        "results",
-        "excel-export",
-        "pdf-export",
-        "backup-restore",
-        "osce",
-        "viva",
-      ]),
-    )
-    .max(20)
-    .default([
-      "cbt",
-      "question-bank",
-      "results",
-      "excel-export",
-      "pdf-export",
-      "backup-restore",
-    ]),
+  features: licenseFeatureSchema.optional(),
 });
 const activationSchema = z.object({
   activationKey: z.string().trim().min(15).max(100),
@@ -160,7 +154,7 @@ const renewSchema = z.object({
   plan: z.enum(["TRIAL", "STANDARD", "PROFESSIONAL", "ENTERPRISE"]),
   maxCandidates: z.number().int().min(1).max(100000),
   expiresAt: z.union([z.string().date(), z.null()]),
-  features: createSchema.shape.features,
+  features: licenseFeatureSchema,
 });
 const loginSchema = z.object({
   email: z.string().trim().email().max(190),
@@ -628,7 +622,7 @@ app.get(
   adminAuth,
   wrap(async (_req, res) => {
     const { rows } = await pool.query(
-      "SELECT id,institution_id,institution_name,contact_email,plan,status,installation_id,max_candidates,issued_at,expires_at,activated_at,features,created_at FROM licenses ORDER BY created_at DESC LIMIT 1000",
+      "SELECT id,product,institution_id,institution_name,contact_email,plan,status,installation_id,max_candidates,issued_at,expires_at,activated_at,features,created_at FROM licenses ORDER BY created_at DESC LIMIT 1000",
     );
     res.json({ data: rows });
   }),
@@ -646,12 +640,19 @@ app.post(
           message: "Invalid licence details",
           errors: parsed.error.flatten(),
         });
-    const input = parsed.data;
+    const input = {
+      ...parsed.data,
+      features: parsed.data.features ?? (
+        parsed.data.product === "caosce-platform"
+          ? ["osce", "viva", "results"]
+          : ["cbt", "question-bank", "results", "excel-export", "pdf-export", "backup-restore"]
+      ),
+    };
     if (input.expiresAt && input.expiresAt < new Date().toISOString().slice(0, 10)) {
       return res.status(400).json({ message: "Expiry date must be today or later" });
     }
     const id = crypto.randomUUID();
-    const key = generateActivationKey();
+    const key = generateActivationKey(input.product);
     const issued = new Date();
     const expiry = input.expiresAt
       ? new Date(`${input.expiresAt}T23:59:59.999Z`)
@@ -660,17 +661,18 @@ app.post(
     try {
       await client.query("BEGIN");
       const { rows: existing } = await client.query(
-        "SELECT id FROM licenses WHERE institution_id=$1 AND status IN ('PENDING','ACTIVE') LIMIT 1",
-        [input.institutionId],
+        "SELECT id FROM licenses WHERE institution_id=$1 AND product=$2 AND status IN ('PENDING','ACTIVE') LIMIT 1",
+        [input.institutionId, input.product],
       );
       if (existing.length) {
         await client.query("ROLLBACK");
-        return res.status(409).json({ message: "This institution already has a pending or active licence." });
+        return res.status(409).json({ message: "This institution already has a pending or active licence for this product." });
       }
       await client.query(
-        "INSERT INTO licenses (id,institution_id,institution_name,contact_email,plan,status,activation_key_hash,max_candidates,issued_at,expires_at,features) VALUES ($1,$2,$3,$4,$5,'PENDING',$6,$7,$8,$9,$10::jsonb)",
+        "INSERT INTO licenses (id,product,institution_id,institution_name,contact_email,plan,status,activation_key_hash,max_candidates,issued_at,expires_at,features) VALUES ($1,$2,$3,$4,$5,$6,'PENDING',$7,$8,$9,$10,$11::jsonb)",
         [
           id,
+          input.product,
           input.institutionId,
           input.institutionName,
           input.contactEmail || null,
@@ -686,14 +688,14 @@ app.post(
         licenseId: id,
         type: "LICENSE_ISSUED",
         actorEmail: req.admin.sub,
-        metadata: { plan: input.plan, maxCandidates: input.maxCandidates, institutionId: input.institutionId },
+        metadata: { product: input.product, plan: input.plan, maxCandidates: input.maxCandidates, institutionId: input.institutionId },
       });
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       // Another administrator may have issued a licence after the pre-check.
       if (error?.code === "23505")
-        return res.status(409).json({ message: "This institution already has a pending or active licence." });
+        return res.status(409).json({ message: "This institution already has a pending or active licence for this product." });
       throw error;
     } finally {
       client.release();
@@ -703,6 +705,7 @@ app.post(
       .json({
         data: {
           id,
+          product: input.product,
           institutionId: input.institutionId,
           institutionName: input.institutionName,
           plan: input.plan,
@@ -737,7 +740,7 @@ app.post(
         await client.query("ROLLBACK");
         return res.status(409).json({ message: `A ${row.status.toLowerCase()} licence cannot be renewed` });
       }
-      const activationKey = generateActivationKey();
+      const activationKey = generateActivationKey(row.product || "nurse-cbt");
       const expiry = input.expiresAt ? new Date(`${input.expiresAt}T23:59:59.999Z`) : null;
       const nextStatus = row.installation_id ? "ACTIVE" : "PENDING";
       const updated = await client.query(
@@ -754,10 +757,10 @@ app.post(
         type: "LICENSE_RENEWED",
         actorEmail: req.admin.sub,
         installationId: row.installation_id,
-        metadata: { previousPlan: row.plan, plan: input.plan, previousExpiresAt: row.expires_at, expiresAt: expiry, maxCandidates: input.maxCandidates },
+        metadata: { product: row.product || "nurse-cbt", previousPlan: row.plan, plan: input.plan, previousExpiresAt: row.expires_at, expiresAt: expiry, maxCandidates: input.maxCandidates },
       });
       await client.query("COMMIT");
-      res.json({ data: { id: row.id, plan: input.plan, status: nextStatus, expiresAt: expiry, activationKey, signedLicense } });
+      res.json({ data: { id: row.id, product: row.product || "nurse-cbt", plan: input.plan, status: nextStatus, expiresAt: expiry, activationKey, signedLicense } });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       throw error;
@@ -775,7 +778,7 @@ app.post(
     try {
       await client.query("BEGIN");
       const { rows } = await client.query(
-        "UPDATE licenses SET status='SUSPENDED',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('PENDING','ACTIVE') RETURNING id,institution_id,installation_id",
+        "UPDATE licenses SET status='SUSPENDED',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('PENDING','ACTIVE') RETURNING id,product,institution_id,installation_id",
         [req.params.id],
       );
       if (!rows.length) {
@@ -787,7 +790,7 @@ app.post(
         type: "LICENSE_SUSPENDED",
         actorEmail: req.admin.sub,
         installationId: rows[0].installation_id,
-        metadata: { institutionId: rows[0].institution_id },
+        metadata: { product: rows[0].product || "nurse-cbt", institutionId: rows[0].institution_id },
       });
       await client.query("COMMIT");
       res.json({ message: "Licence suspended. Online activation is blocked; offline installations are affected when they next check in." });
@@ -810,7 +813,7 @@ app.post(
       const { rows } = await client.query(
         `UPDATE licenses SET status=CASE WHEN expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP THEN 'EXPIRED'
           WHEN installation_id IS NULL THEN 'PENDING' ELSE 'ACTIVE' END,updated_at=CURRENT_TIMESTAMP
-         WHERE id=$1 AND status='SUSPENDED' RETURNING id,institution_id,installation_id,status`,
+         WHERE id=$1 AND status='SUSPENDED' RETURNING id,product,institution_id,installation_id,status`,
         [req.params.id],
       );
       if (!rows.length) {
@@ -822,7 +825,7 @@ app.post(
         type: "LICENSE_RESUMED",
         actorEmail: req.admin.sub,
         installationId: rows[0].installation_id,
-        metadata: { institutionId: rows[0].institution_id, resultingStatus: rows[0].status },
+        metadata: { product: rows[0].product || "nurse-cbt", institutionId: rows[0].institution_id, resultingStatus: rows[0].status },
       });
       await client.query("COMMIT");
       res.json({ message: rows[0].status === "EXPIRED" ? "Licence resumed as expired; renew it to restore service." : "Licence resumed.", status: rows[0].status });
@@ -843,7 +846,7 @@ app.post(
     try {
       await client.query("BEGIN");
       const { rows } = await client.query(
-        "UPDATE licenses SET status='REVOKED',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status <> 'REVOKED' RETURNING id,institution_id,installation_id",
+        "UPDATE licenses SET status='REVOKED',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status <> 'REVOKED' RETURNING id,product,institution_id,installation_id",
         [req.params.id],
       );
       if (!rows.length) {
@@ -855,7 +858,7 @@ app.post(
         type: "LICENSE_REVOKED",
         actorEmail: req.admin.sub,
         installationId: rows[0].installation_id,
-        metadata: { institutionId: rows[0].institution_id },
+        metadata: { product: rows[0].product || "nurse-cbt", institutionId: rows[0].institution_id },
       });
       await client.query("COMMIT");
       res.json({
@@ -914,7 +917,7 @@ app.post(
             licenseId: row.id,
             type: "LICENSE_EXPIRED",
             installationId,
-            metadata: { institutionId: row.institution_id, plan: row.plan },
+            metadata: { product: row.product || "nurse-cbt", institutionId: row.institution_id, plan: row.plan },
           });
           await client.query("COMMIT");
         } else {
@@ -931,7 +934,7 @@ app.post(
         licenseId: row.id,
         type: "LICENSE_ACTIVATED",
         installationId,
-        metadata: { institutionId: row.institution_id, plan: row.plan },
+        metadata: { product: row.product || "nurse-cbt", institutionId: row.institution_id, plan: row.plan },
       });
       await client.query("COMMIT");
       res.json({ data: signed, publicKey: process.env.LICENSE_PUBLIC_KEY_B64 });
@@ -974,7 +977,7 @@ app.post(
             type: "LICENSE_EXPIRED",
             actorEmail: req.admin.sub,
             installationId,
-            metadata: { institutionId: row.institution_id, plan: row.plan },
+            metadata: { product: row.product || "nurse-cbt", institutionId: row.institution_id, plan: row.plan },
           });
           await client.query("COMMIT");
         } else {
@@ -992,7 +995,7 @@ app.post(
         type: "LICENSE_OFFLINE_ISSUED",
         actorEmail: req.admin.sub,
         installationId,
-        metadata: { institutionId: row.institution_id, plan: row.plan },
+        metadata: { product: row.product || "nurse-cbt", institutionId: row.institution_id, plan: row.plan },
       });
       await client.query("COMMIT");
       res.json({ data: signed });

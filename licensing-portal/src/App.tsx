@@ -39,6 +39,7 @@ function normalizeDownloadUrl(value: string | undefined): string | null {
 }
 type Licence = {
   id: string;
+  product: ProductId;
   institution_id: string;
   institution_name: string;
   contact_email?: string;
@@ -51,12 +52,28 @@ type Licence = {
   activated_at?: string;
   features?: string[];
 };
+type ProductId = "nurse-cbt" | "caosce-platform";
+type IssuedLicence = {
+  id: string;
+  product: ProductId;
+  activationKey: string;
+  signedLicense?: { payload: Record<string, unknown>; signature: string; algorithm: string } | null;
+};
+const PRODUCT_NAMES: Record<ProductId, string> = {
+  "nurse-cbt": "CBT Platform",
+  "caosce-platform": "CAOSCE Platform",
+};
+const DEFAULT_FEATURES: Record<ProductId, string[]> = {
+  "nurse-cbt": ["cbt", "question-bank", "results", "excel-export", "pdf-export", "backup-restore"],
+  "caosce-platform": ["osce", "viva", "results"],
+};
 type LicenceEvent = {
   id: string;
   license_id: string | null;
   event_type: string;
   actor_email?: string | null;
   installation_id?: string | null;
+  metadata?: { product?: ProductId };
   created_at: string;
 };
 type AdminAccount = { id: string; email: string; role: string; status: string; created_at: string; last_login_at?: string | null };
@@ -115,6 +132,9 @@ export default function App() {
     [busy, setBusy] = useState(false),
     [loginBusy, setLoginBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [productFilter, setProductFilter] = useState<"all" | ProductId>("all");
+  const [searchText, setSearchText] = useState("");
+  const [issueBusy, setIssueBusy] = useState(false);
   const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
     normalizeDownloadUrl(FALLBACK_INSTALLER_URL),
   );
@@ -124,24 +144,18 @@ export default function App() {
       : null;
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
-    [issued, setIssued] = useState<any>(null);
+    [issued, setIssued] = useState<IssuedLicence | null>(null);
   const [renewing, setRenewing] = useState<Licence | null>(null);
   const [renewForm, setRenewForm] = useState({ plan: "PROFESSIONAL", maxCandidates: 300, expiresAt: "", features: ["cbt", "question-bank", "results"] });
   const [form, setForm] = useState({
+    product: "nurse-cbt" as ProductId,
     institutionName: "",
     institutionId: "",
     contactEmail: "",
     plan: "PROFESSIONAL",
     maxCandidates: 300,
     expiresAt: "",
-    features: [
-      "cbt",
-      "question-bank",
-      "results",
-      "excel-export",
-      "pdf-export",
-      "backup-restore",
-    ],
+    features: DEFAULT_FEATURES["nurse-cbt"],
   });
   useEffect(() => {
     let cancelled = false;
@@ -245,6 +259,16 @@ export default function App() {
   useEffect(() => {
     storeSession(authMode === "mfa-setup" ? "" : token, authMode === "mfa-setup" ? null : user);
   }, [token, user, authMode]);
+  const visibleItems = items.filter((licence) => {
+    const matchesProduct = productFilter === "all" || licence.product === productFilter;
+    const query = searchText.trim().toLocaleLowerCase();
+    const matchesSearch = !query || [
+      licence.institution_name,
+      licence.institution_id,
+      licence.contact_email || "",
+    ].some((value) => value.toLocaleLowerCase().includes(query));
+    return matchesProduct && matchesSearch;
+  });
   async function login(e: React.FormEvent) {
     e.preventDefault();
     if (loginBusy) return;
@@ -354,6 +378,7 @@ export default function App() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setIssueBusy(true);
     try {
       const d = await request("/api/admin/licenses", {
         method: "POST",
@@ -368,6 +393,8 @@ export default function App() {
       await load();
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setIssueBusy(false);
     }
   }
   async function revoke(id: string) {
@@ -410,7 +437,7 @@ export default function App() {
       setError(e.message);
     }
   }
-  async function offlineIssue(id: string) {
+  async function offlineIssue(id: string, product: ProductId) {
     const installationId = prompt(
       "Enter the Installation ID shown on the school server:",
     );
@@ -425,7 +452,7 @@ export default function App() {
       });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `platform-cbt-license-${id}.json`;
+      a.download = `${product}-license-${id}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e: any) {
@@ -473,13 +500,12 @@ export default function App() {
           </div>
           <p className="eyebrow">PRODUCT OWNER CONSOLE</p>
           <h1>
-            The Platform CBT
+            Product
             <br />
-            Licence Manager
+            Licensing Portal
           </h1>
           <p className="muted">
-            Manage customer institutions, activation keys and licence
-            entitlements.
+            Manage product downloads, activation keys and licence entitlements.
           </p>
         </div>
         <section className="panel loginpanel">
@@ -552,8 +578,8 @@ export default function App() {
             <ShieldCheck />
           </div>
           <div>
-            <b>CBT Platform</b>
-            <span>Licence Manager · {user?.email}</span>
+            <b>Product Licensing</b>
+            <span>Administrator console · {user?.email}</span>
           </div>
         </div>
         <div className="headeractions">
@@ -579,29 +605,39 @@ export default function App() {
           <p className="eyebrow">CUSTOMER LICENSING</p>
           <h1>Licensing dashboard</h1>
           <p className="muted">
-            Manage institution licences, administrator access, activations and recent activity.
+            Manage CBT and CAOSCE product licences, administrator access, activations and recent activity.
           </p>
         </div>
-        {installerDownloadUrl && (
-          <button
-            className="secondary"
-            onClick={() =>
-              window.open(installerDownloadUrl, "_blank", "noopener,noreferrer")
-            }
-          >
-            <Download size={16} /> Download CBT installer
-          </button>
-        )}
-        {caosceInstallerDownloadUrl && (
-          <button
-            className="secondary"
-            onClick={() =>
-              window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")
-            }
-          >
-            <Download size={16} /> Download CAOSCE installer
-          </button>
-        )}
+        <div className="download-actions" aria-label="Product installers">
+          {installerDownloadUrl && (
+            <button
+              className="secondary"
+              onClick={() =>
+                window.open(installerDownloadUrl, "_blank", "noopener,noreferrer")
+              }
+            >
+              <Download size={16} /> Download CBT installer
+            </button>
+          )}
+          {caosceInstallerDownloadUrl ? (
+            <button
+              className="secondary"
+              onClick={() =>
+                window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")
+              }
+            >
+              <Download size={16} /> Download CAOSCE installer
+            </button>
+          ) : (
+            <button
+              className="secondary unavailable"
+              disabled
+              title="The CAOSCE Windows installer is not available yet."
+            >
+              <Download size={16} /> CAOSCE installer coming soon
+            </button>
+          )}
+        </div>
         <button
           className="primary"
           onClick={() => {
@@ -618,7 +654,7 @@ export default function App() {
           <div>
             <KeyRound />
             <div>
-              <h2>Activation key — shown once</h2>
+              <h2>{PRODUCT_NAMES[issued.product]} product key — shown once</h2>
               <p className="muted">
                 Copy this key and send it to the customer using a secure
                 channel. It cannot be retrieved later.
@@ -640,12 +676,28 @@ export default function App() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `platform-cbt-license-${issued.id}.json`;
+                a.download = `${issued.product}-license-${issued.id}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}
             >
               <KeyRound size={16} /> Download signed licence
+            </button>
+          )}
+          {issued.product === "caosce-platform" && (
+            <p className="hint" role="status">
+              CAOSCE does not yet validate these keys in the application. Do not rely on this key for access control until app-side activation is integrated.
+              {!caosceInstallerDownloadUrl && " Its installer also has not been built and hosted yet."}
+            </p>
+          )}
+          {issued.product === "caosce-platform" && caosceInstallerDownloadUrl && (
+            <button
+              className="secondary"
+              onClick={() =>
+                window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")
+              }
+            >
+              <Download size={16} /> Download CAOSCE installer
             </button>
           )}
           <button className="close" onClick={() => setIssued(null)}>
@@ -655,8 +707,29 @@ export default function App() {
       )}
       {showForm && (
         <form className="panel formpanel" onSubmit={create}>
-          <h2>New customer licence</h2>
+          <h2>Issue a product licence</h2>
+          <p className="muted">Choose which application this product key will activate. The same institution can hold a separate licence for each product.</p>
           <div className="formgrid">
+            <label>
+              Product
+              <select
+                value={form.product}
+                onChange={(e) => {
+                  const product: ProductId = e.target.value === "caosce-platform"
+                    ? "caosce-platform"
+                    : "nurse-cbt";
+                  setForm({ ...form, product, features: DEFAULT_FEATURES[product] });
+                }}
+              >
+                <option value="nurse-cbt">CBT Platform</option>
+                <option value="caosce-platform">CAOSCE Platform</option>
+              </select>
+              <span className="hint">
+                {form.product === "caosce-platform"
+                  ? `The installer ${caosceInstallerDownloadUrl ? "is available" : "is not published yet"}. CAOSCE app-side key enforcement still needs integration.`
+                  : `This key is for ${PRODUCT_NAMES[form.product]} only.`}
+              </span>
+            </label>
             <label>
               Institution name
               <input
@@ -734,8 +807,10 @@ export default function App() {
             >
               Cancel
             </button>
-            <button className="primary">
-              <KeyRound size={16} /> Generate activation key
+            <button className="primary" disabled={issueBusy}>
+              {issueBusy
+                ? <><span className="spinner" aria-hidden="true" /> Generating key…</>
+                : <><KeyRound size={16} /> Generate product key</>}
             </button>
           </div>
         </form>
@@ -777,14 +852,42 @@ export default function App() {
         <div className="tabletitle">
           <div>
             <h2>Customer register</h2>
-            <p className="muted">Latest 1,000 licences</p>
+            <p className="muted">Showing {visibleItems.length} of {items.length} licences</p>
           </div>
           {busy && <span className="muted">Loading…</span>}
+        </div>
+        <div className="tabletools">
+          <label className="searchfield">
+            <span className="visually-hidden">Search institutions</span>
+            <input
+              type="search"
+              placeholder="Search institution, ID or email"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+            />
+          </label>
+          <label className="filterfield">
+            <span className="visually-hidden">Filter by product</span>
+            <select
+              value={productFilter}
+              onChange={(e) => {
+                const value = e.target.value;
+                setProductFilter(
+                  value === "all" ? "all" : value === "caosce-platform" ? value : "nurse-cbt",
+                );
+              }}
+            >
+              <option value="all">All products</option>
+              <option value="nurse-cbt">CBT Platform</option>
+              <option value="caosce-platform">CAOSCE Platform</option>
+            </select>
+          </label>
         </div>
         <div className="tablewrap">
           <table>
             <thead>
               <tr>
+                <th>Product</th>
                 <th>Institution</th>
                 <th>Plan</th>
                 <th>Status</th>
@@ -795,8 +898,9 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {items.map((x) => (
+              {visibleItems.map((x) => (
                 <tr key={x.id}>
+                  <td><span className={`product-badge ${x.product}`}>{PRODUCT_NAMES[x.product]}</span></td>
                   <td>
                     <b>{x.institution_name}</b>
                     <small>
@@ -818,6 +922,7 @@ export default function App() {
                       {!(["REVOKED", "SUSPENDED"].includes(x.status)) && (
                         <button
                           className="iconbutton"
+                          aria-label={`Renew ${PRODUCT_NAMES[x.product]} licence for ${x.institution_name}`}
                           title="Renew licence and replace activation key"
                           onClick={() => {
                             setRenewForm({ plan: x.plan, maxCandidates: x.max_candidates, expiresAt: x.expires_at ? new Date(x.expires_at).toISOString().slice(0, 10) : "", features: x.features || [] });
@@ -832,6 +937,7 @@ export default function App() {
                       {(["PENDING", "ACTIVE", "SUSPENDED"].includes(x.status)) && (
                         <button
                           className={`iconbutton${x.status === "SUSPENDED" ? "" : " danger"}`}
+                          aria-label={`${x.status === "SUSPENDED" ? "Resume" : "Suspend"} licence for ${x.institution_name}`}
                           title={x.status === "SUSPENDED" ? "Resume licence" : "Suspend licence"}
                           onClick={() => void setSuspended(x)}
                         >
@@ -841,8 +947,9 @@ export default function App() {
                       {!(["REVOKED", "SUSPENDED"].includes(x.status)) && (
                         <button
                           className="iconbutton"
+                          aria-label={`Issue offline licence for ${x.institution_name}`}
                           title="Issue offline licence file"
-                          onClick={() => void offlineIssue(x.id)}
+                          onClick={() => void offlineIssue(x.id, x.product)}
                         >
                           <KeyRound size={16} />
                         </button>
@@ -850,6 +957,7 @@ export default function App() {
                       {x.status !== "REVOKED" && (
                         <button
                           className="iconbutton danger"
+                          aria-label={`Revoke licence for ${x.institution_name}`}
                           title="Revoke licence"
                           onClick={() => void revoke(x.id)}
                         >
@@ -867,6 +975,9 @@ export default function App() {
               No licences yet. Issue the first customer licence to get started.
             </div>
           )}
+          {items.length > 0 && !visibleItems.length && (
+            <div className="empty">No licences match these search and product filters.</div>
+          )}
         </div>
       </section>
       <section className="panel tablepanel activitypanel">
@@ -881,6 +992,7 @@ export default function App() {
             <thead>
               <tr>
                 <th>Time</th>
+                <th>Product</th>
                 <th>Event</th>
                 <th>Administrator</th>
                 <th>Installation</th>
@@ -891,6 +1003,7 @@ export default function App() {
               {events.map((event) => (
                 <tr key={event.id}>
                   <td>{fmtTimestamp(event.created_at)}</td>
+                  <td>{event.metadata?.product ? PRODUCT_NAMES[event.metadata.product] : "—"}</td>
                   <td>{event.event_type.replace(/_/g, " ")}</td>
                   <td>{event.actor_email || "School installation"}</td>
                   <td>{event.installation_id || "—"}</td>

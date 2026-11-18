@@ -47,6 +47,13 @@ test(
         "a second open license for the same institution must violate the partial unique index",
       );
 
+      await pool.query(
+        `INSERT INTO licenses
+          (id,product,institution_id,institution_name,plan,status,activation_key_hash,max_candidates,issued_at,features)
+         VALUES ($1,'caosce-platform',$2,'Integration Test CAOSCE Institution','STANDARD','PENDING',$3,100,CURRENT_TIMESTAMP,'["osce"]'::jsonb)`,
+        [crypto.randomUUID(), institutionId, keyHash(crypto.randomUUID())],
+      );
+
       first = await pool.connect();
       second = await pool.connect();
       await first.query("BEGIN");

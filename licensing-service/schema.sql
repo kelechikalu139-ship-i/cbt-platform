@@ -43,6 +43,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_licensing_admin_invitation_pending_email
 
 CREATE TABLE IF NOT EXISTS licenses (
   id UUID PRIMARY KEY,
+  product TEXT NOT NULL DEFAULT 'nurse-cbt'
+    CONSTRAINT licenses_product_check CHECK (product IN ('nurse-cbt', 'caosce-platform')),
   institution_id VARCHAR(64) NOT NULL,
   institution_name VARCHAR(190) NOT NULL,
   contact_email VARCHAR(190),
@@ -60,13 +62,26 @@ CREATE TABLE IF NOT EXISTS licenses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'nurse-cbt';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'licenses_product_check' AND conrelid = 'licenses'::regclass
+  ) THEN
+    ALTER TABLE licenses ADD CONSTRAINT licenses_product_check
+      CHECK (product IN ('nurse-cbt', 'caosce-platform'));
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status);
 CREATE INDEX IF NOT EXISTS idx_licenses_institution ON licenses(institution_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_expiry ON licenses(expires_at);
 -- Application-level checks provide readable errors; this index closes the
--- concurrent-create race when two admins issue a licence for one institution.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_licenses_one_open_per_institution
-  ON licenses(institution_id) WHERE status IN ('PENDING', 'ACTIVE');
+-- concurrent-create race when two admins issue a product licence for one institution.
+DROP INDEX IF EXISTS uq_licenses_one_open_per_institution;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_licenses_one_open_per_institution_product
+  ON licenses(institution_id, product) WHERE status IN ('PENDING', 'ACTIVE');
 
 CREATE TABLE IF NOT EXISTS license_events (
   id UUID PRIMARY KEY,
