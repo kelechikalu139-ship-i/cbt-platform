@@ -57,6 +57,7 @@ server/uploads/
 .cache
 .temp
 .tmp
+/.installer-staging/
 *.pid
 *.seed
 *.pid.lock
