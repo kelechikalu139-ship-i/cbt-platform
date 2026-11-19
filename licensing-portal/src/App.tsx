@@ -26,7 +26,8 @@ const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
 const configuredCaosceInstallerUrl = import.meta.env.VITE_CAOSCE_INSTALLER_URL?.trim();
 const FALLBACK_INSTALLER_URL =
   "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/latest/download/The-Platform-CBT-Setup-latest.exe";
-const CAOSCE_RELEASES_URL = "https://github.com/kelechikalu139-ship-i/CAOSCE_platform/releases";
+const FALLBACK_CAOSCE_INSTALLER_URL =
+  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/caosce-v1.0.0/CAOSCE-Platform-Setup-v1.0.0.exe";
 
 function normalizeDownloadUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -40,8 +41,11 @@ function normalizeDownloadUrl(value: string | undefined): string | null {
 }
 function normalizeHttpsDownloadUrl(value: string | undefined): string | null {
   const normalized = normalizeDownloadUrl(value);
-  return normalized?.startsWith("https://") ? normalized : null;
+  if (!normalized?.startsWith("https://")) return null;
+  return /\.(?:exe|msi)$/i.test(new URL(normalized).pathname) ? normalized : null;
 }
+const CAOSCE_INSTALLER_URL =
+  normalizeHttpsDownloadUrl(configuredCaosceInstallerUrl) || FALLBACK_CAOSCE_INSTALLER_URL;
 type Licence = {
   id: string;
   product: ProductId;
@@ -145,12 +149,6 @@ export default function App() {
   const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
     normalizeDownloadUrl(FALLBACK_INSTALLER_URL),
   );
-  const [caosceInstallerDownloadUrl, setCaosceInstallerDownloadUrl] = useState<string | null>(() =>
-    normalizeHttpsDownloadUrl(configuredCaosceInstallerUrl),
-  );
-  const [caosceReleaseStatus, setCaosceReleaseStatus] = useState<"checking" | "available" | "missing" | "unavailable">(
-    normalizeHttpsDownloadUrl(configuredCaosceInstallerUrl) ? "available" : "checking",
-  );
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
     [issued, setIssued] = useState<IssuedLicence | null>(null);
@@ -186,30 +184,6 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, []);
-  useEffect(() => {
-    if (caosceInstallerDownloadUrl) return;
-    let cancelled = false;
-    void fetch("https://api.github.com/repos/kelechikalu139-ship-i/CAOSCE_platform/releases/latest")
-      .then(async (response) => {
-        if (!response.ok) {
-          if (!cancelled) setCaosceReleaseStatus("unavailable");
-          return;
-        }
-        const release = await response.json() as { assets?: Array<{ browser_download_url?: string; name?: string }> };
-        const installer = release.assets?.find((asset) =>
-          /\.(?:exe|msi)$/i.test(asset.name ?? "") && /(?:caosce|setup|installer)/i.test(asset.name ?? ""),
-        );
-        const resolved = normalizeHttpsDownloadUrl(installer?.browser_download_url);
-        if (!cancelled) {
-          setCaosceInstallerDownloadUrl(resolved);
-          setCaosceReleaseStatus(resolved ? "available" : "missing");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCaosceReleaseStatus("unavailable");
-      });
-    return () => { cancelled = true; };
-  }, [caosceInstallerDownloadUrl]);
 
   async function request(path: string, opts: RequestInit = {}, authToken = token) {
     if (!API) throw new Error(API_CONFIGURATION_ERROR);
@@ -702,31 +676,12 @@ export default function App() {
               <Download size={16} /> Download CBT installer
             </button>
           )}
-          {caosceInstallerDownloadUrl ? (
-            <button
-              className="secondary"
-              onClick={() =>
-                window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")
-              }
-            >
-              <Download size={16} /> Download CAOSCE installer
-            </button>
-          ) : (
-            <button
-              className="secondary"
-              onClick={() => window.open(CAOSCE_RELEASES_URL, "_blank", "noopener,noreferrer")}
-              title="Open the CAOSCE release page to get the installer when it is published."
-            >
-              <Download size={16} /> Browse CAOSCE releases
-            </button>
-          )}
-          {!caosceInstallerDownloadUrl && (
-            <span className="hint download-note">
-              {caosceReleaseStatus === "checking" && "Checking for a published installer…"}
-              {caosceReleaseStatus === "missing" && "No installer release found yet."}
-              {caosceReleaseStatus === "unavailable" && "Release lookup unavailable; open the release page to check."}
-            </span>
-          )}
+          <button
+            className="secondary"
+            onClick={() => window.open(CAOSCE_INSTALLER_URL, "_blank", "noopener,noreferrer")}
+          >
+            <Download size={16} /> Download CAOSCE installer
+          </button>
         </div>
         <button
           className="primary"
@@ -778,25 +733,14 @@ export default function App() {
           {issued.product === "caosce-platform" && (
             <p className="hint" role="status">
               CAOSCE does not yet validate these keys in the application. Do not rely on this key for access control until app-side activation is integrated.
-              {!caosceInstallerDownloadUrl && " No CAOSCE installer is published in GitHub Releases yet."}
             </p>
           )}
-          {issued.product === "caosce-platform" && caosceInstallerDownloadUrl && (
+          {issued.product === "caosce-platform" && (
             <button
               className="secondary"
-              onClick={() =>
-                window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")
-              }
+              onClick={() => window.open(CAOSCE_INSTALLER_URL, "_blank", "noopener,noreferrer")}
             >
               <Download size={16} /> Download CAOSCE installer
-            </button>
-          )}
-          {issued.product === "caosce-platform" && !caosceInstallerDownloadUrl && (
-            <button
-              className="secondary"
-              onClick={() => window.open(CAOSCE_RELEASES_URL, "_blank", "noopener,noreferrer")}
-            >
-              <Download size={16} /> Browse CAOSCE releases
             </button>
           )}
           <button className="close" onClick={() => setIssued(null)}>
@@ -825,7 +769,7 @@ export default function App() {
               </select>
               <span className="hint">
                 {form.product === "caosce-platform"
-                  ? `${caosceInstallerDownloadUrl ? "Installer download is available." : "Use Browse CAOSCE releases to check for the installer."} CAOSCE app-side key enforcement still needs integration.`
+                  ? "Installer download is available. CAOSCE app-side key enforcement still needs integration."
                   : `This key is for ${PRODUCT_NAMES[form.product]} only.`}
               </span>
             </label>

@@ -55,9 +55,9 @@ The CBT download button uses its existing release lookup and `VITE_CBT_INSTALLER
 
 ## CAOSCE client installation
 
-The dashboard offers a separate CAOSCE installer control. It checks the latest CAOSCE GitHub release for an `.exe` or `.msi`; when no installer is found, the control opens the product's Releases page instead. You can override discovery with `VITE_CAOSCE_INSTALLER_URL`, a direct HTTPS URL to the signed installer.
+The dashboard offers a separate CAOSCE installer control with a direct versioned URL to the CAOSCE pre-release asset in the public CBT release repository. It does not use or replace the latest CBT release. `VITE_CAOSCE_INSTALLER_URL` can override the default with another direct HTTPS installer URL.
 
-The `CAOSCE_Platform` packaging guide currently describes its Windows installer as a scaffold, and no installer package is present in that workspace or its GitHub releases. Therefore the portal can open the Releases page, but cannot download a CAOSCE installer until one is built and published. Do not point the download at a source archive or an unsigned development build.
+The CAOSCE installer includes the compiled API and Admin, Examiner, and Student portals. It requires Windows 10/11 x64, Node.js 20+, and an existing MySQL/MariaDB database; it does not install a database service or configure Windows Firewall. The installer configures the DB connection and runs migrations, but the CAOSCE app does not yet enforce product keys issued by this portal.
 
 The licence service now issues separate `nurse-cbt` and `caosce-platform` product keys using the existing `NCBT-XXXXX-...` key format, and signs the corresponding product ID into each licence. Existing CBT rows are kept as `nurse-cbt`; the service adds the product column and replaces the institution-wide open-licence constraint with a per-product constraint at startup. The portal can therefore issue both products to one institution while preventing duplicate open licences for the same product. CAOSCE app-side activation/enforcement is not yet integrated: its client must validate the `caosce-platform` signed licence before these keys enforce access in that application.
 
