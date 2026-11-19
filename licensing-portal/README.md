@@ -55,7 +55,7 @@ The CBT download button uses its existing release lookup and `VITE_CBT_INSTALLER
 
 ## CAOSCE client installation
 
-The dashboard offers a separate CAOSCE installer control with a direct versioned URL to the CAOSCE v1.0.2 pre-release asset in the public CBT release repository. It does not use or replace the latest CBT release. `VITE_CAOSCE_INSTALLER_URL` can override the default with another direct HTTPS installer URL.
+The dashboard offers a separate CAOSCE installer control with a direct versioned URL to the CAOSCE v1.0.3 pre-release asset in the public CBT release repository. It does not use or replace the latest CBT release. `VITE_CAOSCE_INSTALLER_URL` can override the default with another direct HTTPS installer URL.
 
 The CAOSCE installer includes the compiled API and Admin, Examiner, and Student portals, plus the pinned MariaDB installer. It requires Windows 10/11 x64, Node.js 20+, and administrator approval. Setup provisions a separate `CAOSCEPlatformMariaDB` service and `caosce_manager` database under ProgramData, bound only to loopback on a dedicated port; it does not reuse or alter the CBT database service or schema. Upgrading from v1.0.1 retains the prior `.env` in a restricted backup but does not migrate data from the old external database. The CAOSCE database service, MariaDB runtime, and data persist after uninstall. Its desktop shortcut uses the CAOSCE project icon, starts the API in the background, and opens the Admin login; Start Menu shortcuts launch each portal. The installer applies database migrations, but the CAOSCE app does not yet enforce product keys issued by this portal.
 
