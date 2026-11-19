@@ -49,6 +49,15 @@ try {
   }
 
   if (existingAppUser.length) {
+    // The installation config is the source of truth for the application
+    // credential. An interrupted install or manual database password change
+    // can leave the existing account out of sync with ProgramData/.env. Repair
+    // it while connected as root before verifying the exact credentials the
+    // API will use.
+    await connection.query(
+      `ALTER USER 'cbt_app'@'127.0.0.1' IDENTIFIED BY ${connection.escape(input.databasePassword)}`,
+    )
+    await connection.query("GRANT ALL PRIVILEGES ON `cbt_system`.* TO 'cbt_app'@'127.0.0.1'")
     const appConnection = await createConnection({
       host: '127.0.0.1', port: databasePort, user: 'cbt_app', password: input.databasePassword,
       database: 'cbt_system', connectTimeout: 10000,
