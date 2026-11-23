@@ -44,7 +44,7 @@ function normalizeHttpsDownloadUrl(value: string | undefined): string | null {
   if (!normalized?.startsWith("https://")) return null;
   return /\.(?:exe|msi)$/i.test(new URL(normalized).pathname) ? normalized : null;
 }
-const CAOSCE_INSTALLER_URL =
+const FALLBACK_CAOSCE_DOWNLOAD_URL =
   normalizeHttpsDownloadUrl(configuredCaosceInstallerUrl) || FALLBACK_CAOSCE_INSTALLER_URL;
 type Licence = {
   id: string;
@@ -149,6 +149,7 @@ export default function App() {
   const [installerDownloadUrl, setInstallerDownloadUrl] = useState<string | null>(() =>
     normalizeDownloadUrl(FALLBACK_INSTALLER_URL),
   );
+  const [caosceInstallerDownloadUrl, setCaosceInstallerDownloadUrl] = useState<string>(() => FALLBACK_CAOSCE_DOWNLOAD_URL);
   const [inviteLink, setInviteLink] = useState("");
   const [showForm, setShowForm] = useState(false),
     [issued, setIssued] = useState<IssuedLicence | null>(null);
@@ -182,6 +183,28 @@ export default function App() {
         const fallback = normalizeDownloadUrl(configuredInstallerUrl || FALLBACK_INSTALLER_URL)
         if (!cancelled && fallback) setInstallerDownloadUrl(fallback)
       });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("https://api.github.com/repos/kelechikalu139-ship-i/cbt-platform/releases?per_page=100")
+      .then(async response => {
+        if (!response.ok) return;
+        const releases = await response.json() as Array<{ tag_name?: string; assets?: Array<{ name?: string; browser_download_url?: string }> }>;
+        const caosceReleases = releases.flatMap(release => {
+          const match = /^caosce-v(\d+)\.(\d+)\.(\d+)$/.exec(release.tag_name || "");
+          if (!match) return [];
+          const installer = release.assets?.find(asset => asset.name === `CAOSCE-Platform-Setup-v${match[1]}.${match[2]}.${match[3]}.exe`);
+          const url = normalizeHttpsDownloadUrl(installer?.browser_download_url);
+          return url ? [{ version: match.slice(1).map(Number), url }] : [];
+        }).sort((a, b) => {
+          for (let i = 0; i < 3; i++) if (a.version[i] !== b.version[i]) return b.version[i] - a.version[i];
+          return 0;
+        });
+        if (!cancelled && caosceReleases[0]) setCaosceInstallerDownloadUrl(caosceReleases[0].url);
+      })
+      .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
 
@@ -519,11 +542,11 @@ export default function App() {
   if (authMode === "mfa-login" && !token)
     return (
       <main className="login">
-        <div className="brand"><div className="logo"><ShieldCheck /></div><p className="eyebrow">ACCOUNT SECURITY</p><h1>Verify it’s you</h1><p className="muted">Enter a current code from your authenticator app or use one recovery code.</p></div>
+        <div className="brand"><div className="logo"><ShieldCheck /></div><p className="eyebrow">ACCOUNT SECURITY</p><h1>Verify itâ€™s you</h1><p className="muted">Enter a current code from your authenticator app or use one recovery code.</p></div>
         <section className="panel loginpanel"><form className="authfields" onSubmit={login}>
           <h2>Multi-factor verification</h2><p className="muted">Signing in as {email}</p>
           <label>Authenticator or recovery code<input type="text" autoComplete="one-time-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} autoFocus required /></label>
-          {error && <p className="error">{error}</p>}<button className="primary" disabled={loginBusy}><span className="spinner" aria-hidden="true" />{loginBusy ? "Verifying…" : <><LogIn size={17} /> Verify and sign in</>}</button>
+          {error && <p className="error">{error}</p>}<button className="primary" disabled={loginBusy}><span className="spinner" aria-hidden="true" />{loginBusy ? "Verifyingâ€¦" : <><LogIn size={17} /> Verify and sign in</>}</button>
           <button type="button" className="secondary" onClick={() => { setAuthMode("login"); setMfaCode(""); setMfaChallengeToken(""); setError(""); }}>Back to email and password</button>
         </form></section>
       </main>
@@ -539,7 +562,7 @@ export default function App() {
             <form className="authfields" onSubmit={verifyMfaSetup}>
               <h2>Connect an authenticator app</h2><p className="muted">Scan this QR code in Google Authenticator, Microsoft Authenticator, or another TOTP app. You can also enter the setup key manually.</p>
               {mfaQrDataUrl && <img className="mfa-qr" src={mfaQrDataUrl} alt="Authenticator setup QR code" />}
-              <label>Setup key<div className="mfa-secret"><code>{mfaSecret || "Generating…"}</code><button type="button" className="secondary" onClick={() => void navigator.clipboard.writeText(mfaSecret)}>Copy</button></div></label>
+              <label>Setup key<div className="mfa-secret"><code>{mfaSecret || "Generatingâ€¦"}</code><button type="button" className="secondary" onClick={() => void navigator.clipboard.writeText(mfaSecret)}>Copy</button></div></label>
               <p className="hint">Then enter the current six-digit code from the app to confirm setup.</p>
               <label>Authenticator code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaSetupCode} onChange={(e) => setMfaSetupCode(e.target.value.replace(/\D/g, ""))} required /></label>
               {error && <p className="error">{error}</p>}<button className="primary" disabled={!mfaSecret}>Enable MFA</button>
@@ -567,7 +590,7 @@ export default function App() {
         </div>
         <section className="panel loginpanel">
           {authMode === "bootstrap" ? bootstrapStatus === "checking" ? (
-            <div className="authfields"><h2>Checking setup link</h2><p className="muted">Verifying this one-time super-admin link…</p></div>
+            <div className="authfields"><h2>Checking setup link</h2><p className="muted">Verifying this one-time super-admin linkâ€¦</p></div>
           ) : bootstrapStatus === "closed" ? (
             <div className="authfields"><h2>Super-admin setup unavailable</h2><p className="muted">This setup link has expired or has already been used.</p><button className="secondary" onClick={() => { setAuthMode("login"); setBootstrapToken(""); window.history.replaceState({}, "", window.location.pathname); }}>Back to sign in</button></div>
           ) : (
@@ -617,7 +640,7 @@ export default function App() {
           <label>Authenticator or recovery code<input type="text" autoComplete="one-time-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="6-digit code or recovery code" /></label>
           {error && <p className="error">{error}</p>}
           <button className="primary" disabled={loginBusy}>
-            {loginBusy ? <><span className="spinner" aria-hidden="true" /> Signing in…</> : <><LogIn size={17} /> Sign in securely</>}
+            {loginBusy ? <><span className="spinner" aria-hidden="true" /> Signing inâ€¦</> : <><LogIn size={17} /> Sign in securely</>}
           </button>
           <p className="hint">
             Administrator accounts are created by the super-admin. Contact your product owner if you need access.
@@ -636,7 +659,7 @@ export default function App() {
           </div>
           <div>
             <b>Product Licensing</b>
-            <span>Administrator console · {user?.email}</span>
+            <span>Administrator console Â· {user?.email}</span>
           </div>
         </div>
         <div className="headeractions">
@@ -678,7 +701,7 @@ export default function App() {
           )}
           <button
             className="secondary"
-            onClick={() => window.open(CAOSCE_INSTALLER_URL, "_blank", "noopener,noreferrer")}
+            onClick={() => window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")}
           >
             <Download size={16} /> Download CAOSCE installer
           </button>
@@ -699,7 +722,7 @@ export default function App() {
           <div>
             <KeyRound />
             <div>
-              <h2>{PRODUCT_NAMES[issued.product]} product key — shown once</h2>
+              <h2>{PRODUCT_NAMES[issued.product]} product key â€” shown once</h2>
               <p className="muted">
                 Copy this key and send it to the customer using a secure
                 channel. It cannot be retrieved later.
@@ -738,7 +761,7 @@ export default function App() {
           {issued.product === "caosce-platform" && (
             <button
               className="secondary"
-              onClick={() => window.open(CAOSCE_INSTALLER_URL, "_blank", "noopener,noreferrer")}
+              onClick={() => window.open(caosceInstallerDownloadUrl, "_blank", "noopener,noreferrer")}
             >
               <Download size={16} /> Download CAOSCE installer
             </button>
@@ -852,7 +875,7 @@ export default function App() {
             </button>
             <button className="primary" disabled={issueBusy}>
               {issueBusy
-                ? <><span className="spinner" aria-hidden="true" /> Generating key…</>
+                ? <><span className="spinner" aria-hidden="true" /> Generating keyâ€¦</>
                 : <><KeyRound size={16} /> Generate product key</>}
             </button>
           </div>
@@ -905,7 +928,7 @@ export default function App() {
             <h2>Customer register</h2>
             <p className="muted">Showing {visibleItems.length} of {items.length} licences</p>
           </div>
-          {busy && <span className="muted">Loading…</span>}
+          {busy && <span className="muted">Loadingâ€¦</span>}
         </div>
         <div className="tabletools">
           <label className="searchfield">
@@ -995,7 +1018,7 @@ export default function App() {
                     <b>{x.institution_name}</b>
                     <small>
                       {x.institution_id}
-                      {x.contact_email ? ` · ${x.contact_email}` : ""}
+                      {x.contact_email ? ` Â· ${x.contact_email}` : ""}
                     </small>
                   </td>
                   <td>{x.plan}</td>
@@ -1093,10 +1116,10 @@ export default function App() {
               {events.map((event) => (
                 <tr key={event.id}>
                   <td>{fmtTimestamp(event.created_at)}</td>
-                  <td>{event.metadata?.product ? PRODUCT_NAMES[event.metadata.product] : "—"}</td>
+                  <td>{event.metadata?.product ? PRODUCT_NAMES[event.metadata.product] : "â€”"}</td>
                   <td>{event.event_type.replace(/_/g, " ")}</td>
                   <td>{event.actor_email || "School installation"}</td>
-                  <td>{event.installation_id || "—"}</td>
+                  <td>{event.installation_id || "â€”"}</td>
                   <td>{event.license_id || "Deleted licence"}</td>
                 </tr>
               ))}
@@ -1117,7 +1140,7 @@ export default function App() {
         </section>
       )}
       <footer>
-        Private product-owner portal · Use HTTPS, strong credentials, and
+        Private product-owner portal Â· Use HTTPS, strong credentials, and
         restricted access in production.
       </footer>
     </main>
