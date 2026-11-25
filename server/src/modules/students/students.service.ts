@@ -5,8 +5,9 @@ import { ApiError } from '../../utils/api-error.js'
 import { hashPassword } from '../../utils/password.js'
 import { buildMeta } from '../../utils/pagination.js'
 import { AUDIT_ACTIONS, recordAudit } from '../../services/audit.service.js'
-import { buildStudentListArgs, bulkDeleteStudentsSchema } from './students.schema.js'
+import { buildStudentListArgs, bulkCreateStudentsSchema, bulkDeleteStudentsSchema } from './students.schema.js'
 import type {
+  BulkCreateStudentsInput,
   BulkDeleteStudentsInput,
   CreateStudentInput,
   StudentListQuery,
@@ -35,6 +36,7 @@ const listSelect = {
   className: true,
   session: true,
   gender: true,
+  passport: true,
   status: true,
   createdAt: true,
   updatedAt: true,
@@ -61,6 +63,7 @@ type StudentRow = {
   className: string | null
   session: string | null
   gender: string | null
+  passport: string | null
   status: StudentListItem['status']
   createdAt: Date
   updatedAt: Date
@@ -89,6 +92,7 @@ function toDto(row: StudentRow) {
     className: row.className,
     session: row.session,
     gender: row.gender,
+    passport: row.passport,
     status: row.status,
     hasActiveSession,
     createdAt: row.createdAt.toISOString(),
@@ -211,6 +215,7 @@ export async function createStudent(
     className: input.className || null,
     session: input.session || null,
     gender: input.gender || null,
+    passport: input.passport || null,
     status: input.status,
   }
 
@@ -397,6 +402,7 @@ function buildStudentUpdateData(input: UpdateStudentInput): Prisma.StudentUpdate
   if (input.className !== undefined) data.className = input.className || null
   if (input.session !== undefined) data.session = input.session || null
   if (input.gender !== undefined) data.gender = input.gender || null
+  if (input.passport !== undefined) data.passport = input.passport || null
   if (input.status !== undefined) data.status = input.status
 
   return data
@@ -506,6 +512,31 @@ export async function deleteStudent(
   })
 
   return { id, deleted: true }
+}
+
+/** Create many students from a CSV roster in one transaction. */
+export async function bulkCreateStudents(
+  input: BulkCreateStudentsInput,
+  context: { actorId: string; ipAddress?: string | null; userAgent?: string | null },
+): Promise<{ created: number; failed: Array<{ row: number; studentId: string; error: string }> }> {
+  const created: Array<Prisma.StudentGetPayload<{ select: typeof listSelect }>> = []
+  const failed: Array<{ row: number; studentId: string; error: string }> = []
+
+  for (const [index, row] of input.students.entries()) {
+    const rowNumber = index + 1
+    try {
+      const student = await createStudent(row, context)
+      created.push(student as Prisma.StudentGetPayload<{ select: typeof listSelect }>)
+    } catch (error) {
+      failed.push({
+        row: rowNumber,
+        studentId: row.studentId,
+        error: error instanceof Error ? error.message : 'Could not create student',
+      })
+    }
+  }
+
+  return { created: created.length, failed }
 }
 
 /** Distinct classes, for the filter dropdown in the admin UI. */

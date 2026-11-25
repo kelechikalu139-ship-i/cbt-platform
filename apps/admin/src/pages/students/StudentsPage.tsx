@@ -213,6 +213,26 @@ export function StudentsPage({
     },
   })
 
+  const importMutation = useMutation({
+    mutationFn: (payloads: StudentInput[]) => studentMutations.bulkCreate(payloads),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['students'] })
+      void queryClient.invalidateQueries({ queryKey: ['student-classes'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setImportOpen(false)
+      setMutationError(null)
+      if (result.failed.length > 0) {
+        setMutationError(
+          `Imported ${result.created} student(s); ${result.failed.length} row(s) failed. ` +
+            result.failed.slice(0, 5).map((f: { row: number; studentId: string; error: string }) => `row ${f.row} (${f.studentId}): ${f.error}`).join('; '),
+        )
+      }
+    },
+    onError: (err: unknown) => {
+      setMutationError(errorMessage(err))
+    },
+  })
+
   const setStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: EntityStatus }) =>
       studentMutations.setStatus(id, status),
@@ -626,14 +646,9 @@ export function StudentsPage({
         open={importOpen}
         onClose={() => setImportOpen(false)}
         error={mutationError}
-        submitting={createMutation.isPending}
+        submitting={importMutation.isPending}
         onSubmit={(payloads) => {
-          // Sequential creation so the server can report which row failed.
-          void (async () => {
-            for (const payload of payloads) {
-              await createMutation.mutateAsync(payload).catch(() => undefined)
-            }
-          })()
+          void importMutation.mutateAsync(payloads)
         }}
       />
 

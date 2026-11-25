@@ -3,6 +3,7 @@ import { requirePermission } from '../../middleware/auth.js'
 import { validate } from '../../middleware/validate.js'
 import { PERMISSIONS } from '../../constants/permissions.js'
 import {
+  bulkCreateStudentsSchema,
   bulkDeleteStudentsSchema,
   createStudentSchema,
   extendStudentSessionSchema,
@@ -11,6 +12,7 @@ import {
   updateStudentSchema,
 } from './students.schema.js'
 import {
+  bulkCreateStudentsController,
   bulkDeleteStudentsController,
   createStudentController,
   deleteStudentController,
@@ -61,6 +63,14 @@ studentsRouter.delete(
   requirePermission(PERMISSIONS.STUDENTS_DELETE),
   validate({ body: bulkDeleteStudentsSchema }),
   bulkDeleteStudentsController,
+)
+
+/** Create many students from a CSV roster. */
+studentsRouter.post(
+  '/bulk',
+  requirePermission(PERMISSIONS.STUDENTS_CREATE),
+  validate({ body: bulkCreateStudentsSchema }),
+  bulkCreateStudentsController,
 )
 
 studentsRouter.post(

@@ -18,7 +18,7 @@ import { systemApi } from '../../services'
 import { applyBrandColor } from '../../utils/theme'
 import { cn } from '../../utils'
 import { useApiErrorMessage } from '../../hooks/useApiErrorMessage'
-import type { BackupInfo, LocalLicenseInfo, SystemSettings } from '../../types'
+import type { BackupInfo, LocalLicenseInfo, SystemSettings, LanConfig } from '../../types'
 
 interface SettingsPageProps {
   settings: SystemSettings
@@ -68,6 +68,8 @@ export function SettingsPage({
   const [confirmRestore, setConfirmRestore] = useState(false)
   const [restoreName, setRestoreName] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [lanConfig, setLanConfig] = useState<LanConfig | null>(null)
+  const [lanSaving, setLanSaving] = useState(false)
 
   // Reload the form when new data arrives, unless the administrator is editing.
   useEffect(() => {
@@ -91,6 +93,15 @@ export function SettingsPage({
       .then((license) => setLicenseInfo(license))
       .catch(() => setLicenseInfo(null))
       .finally(() => setLicenseLoading(false))
+  }, [])
+
+  // Fetch LAN / client PC setup so the administrator can see and change
+  // the server address clients use to reach the API.
+  useEffect(() => {
+    void systemApi
+      .lanConfig()
+      .then((config) => setLanConfig(config))
+      .catch(() => setLanConfig(null))
   }, [])
 
   const activateLicense = () => {
@@ -379,6 +390,121 @@ export function SettingsPage({
                 </p>
               )}
             </div>
+          </PanelBody>
+        </Panel>
+
+        {/* LAN configuration */}
+        <Panel>
+          <PanelHeader
+            title="LAN configuration"
+            description="How client PCs (examiner and student portals) reach this server"
+          />
+          <PanelBody className="space-y-4">
+            {lanConfig ? (
+              <>
+                <Input
+                  label="Server LAN IP"
+                  value={lanConfig.serverIp}
+                  onChange={(e) => {
+                    setLanConfig({ ...lanConfig, serverIp: e.target.value })
+                    setDirty(true)
+                  }}
+                  hint="Your server PC's LAN address, e.g. 192.168.0.167 — not 0.0.0.0"
+                  placeholder="192.168.0.167"
+                />
+                <Input
+                  label="Server port"
+                  type="number"
+                  min={1024}
+                  max={65535}
+                  value={lanConfig.serverPort}
+                  onChange={(e) => {
+                    setLanConfig({ ...lanConfig, serverPort: Number(e.target.value) })
+                    setDirty(true)
+                  }}
+                  hint="Port the API listens on (default 5001)"
+                />
+                <Input
+                  label="API base URL"
+                  value={lanConfig.apiUrl}
+                  onChange={(e) => {
+                    setLanConfig({ ...lanConfig, apiUrl: e.target.value })
+                    setDirty(true)
+                  }}
+                  hint="Full URL examiner and student portals use, e.g. http://192.168.0.167:5001/api"
+                  placeholder="http://192.168.0.167:5001/api"
+                />
+                <Input
+                  label="LAN network range (CIDR)"
+                  value={lanConfig.networkRange}
+                  onChange={(e) => {
+                    setLanConfig({ ...lanConfig, networkRange: e.target.value })
+                    setDirty(true)
+                  }}
+                  hint="Your school's LAN range, e.g. 192.168.1.0/24"
+                  placeholder="192.168.1.0/24"
+                />
+                <div className="rounded-md border border-slate-200 px-3 py-2.5">
+                  <Toggle
+                    checked={lanConfig.allowExaminerPCs}
+                    onChange={(v) => {
+                      setLanConfig({ ...lanConfig, allowExaminerPCs: v })
+                      setDirty(true)
+                    }}
+                    label="Allow examiner PCs"
+                    description="Whether examiner portal devices can connect to this server."
+                  />
+                </div>
+                <div className="rounded-md border border-slate-200 px-3 py-2.5">
+                  <Toggle
+                    checked={lanConfig.allowStudentPCs}
+                    onChange={(v) => {
+                      setLanConfig({ ...lanConfig, allowStudentPCs: v })
+                      setDirty(true)
+                    }}
+                    label="Allow student PCs"
+                    description="Whether student portal devices can connect to this server."
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!lanConfig) return
+                    setLanSaving(true)
+                    void systemApi
+                      .updateLanConfig(lanConfig)
+                      .then(() => {
+                        setDirty(false)
+                      })
+                      .catch(() => {
+                        // Server reports the failure
+                      })
+                      .finally(() => setLanSaving(false))
+                  }}
+                  disabled={lanSaving || !dirty}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md border px-3 py-2.5 text-left',
+                    lanSaving
+                      ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : !dirty
+                        ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'border-slate-200 bg-white hover:bg-amber-50 cursor-pointer',
+                  )}
+                >
+                  <Server className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="flex-1 text-xs font-medium">
+                    {lanSaving ? 'Saving LAN config…' : 'Save LAN configuration'}
+                  </span>
+                </button>
+                <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+                  After saving, set `VITE_API_URL` to this API base URL in each
+                  portal's `.env`, restart the portals, and open the firewall
+                  ports (5001 API, 7000 student, 8000 examiner).
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">Loading LAN configuration…</p>
+            )}
           </PanelBody>
         </Panel>
 

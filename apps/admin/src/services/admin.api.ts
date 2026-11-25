@@ -28,6 +28,7 @@ import type {
   User,
   UserInput,
   BackupInfo,
+  LanConfig,
 } from '../types'
 import { http } from './http'
 
@@ -160,6 +161,13 @@ export const realSystemApi = {
    * `name` is the backup folder's timestamp from `backups()`.
    */
   restoreBackup: (name: string) => http.post<{ message: string }>('/system/restore', { name }),
+  /** LAN / client PC setup. */
+  lanConfig: () => http.get<LanConfig>('/settings/lan-config'),
+  updateLanConfig: (patch: Partial<LanConfig>) => http.patch<LanConfig>('/settings/lan-config', patch),
+  /** Workstation whitelist (global client PC allowlist). */
+  workstationWhitelistEnabled: () => http.get<{ enabled: boolean }>('/settings/workstations/config'),
+  updateWorkstationWhitelist: (enabled: boolean) =>
+    http.put<{ enabled: boolean }>('/settings/workstations/config', { enabled }),
 }
 
 /* -------------------------------------------------------------------------- */
@@ -187,6 +195,15 @@ export const realStudentsApi = {
   setStatus: (id: string, status: Student['status']) =>
     http.patch<Student>(`/students/${id}`, { status }),
   remove: (id: string) => http.delete<void>(`/students/${id}`),
+  /**
+   * Bulk-create students from a CSV roster. Returns how many were created
+   * and any per-row failures so the UI can surface them.
+   */
+  bulkCreate: (payloads: StudentInput[]) =>
+    http.post<{ created: number; failed: Array<{ row: number; studentId: string; error: string }> }>(
+      '/students/bulk',
+      { students: payloads },
+    ),
   /**
    * Soft-delete every student matching a class name or an examination.
    * At least one of `className` or `examId` must be provided.

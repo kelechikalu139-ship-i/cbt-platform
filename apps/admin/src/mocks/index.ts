@@ -19,6 +19,8 @@ import type {
   SystemStatus,
   User,
   UserInput,
+  LanConfig,
+  StudentInput,
 } from '../types'
 import type { LoginResponse } from '../services/admin.api'
 import { paginate, matchesSearch } from '../utils'
@@ -175,6 +177,33 @@ export const mockSystemApi = {
       lanAddress: fx.lan.address,
       port: fx.lan.port,
     }),
+
+  lanConfig: (): Promise<LanConfig> =>
+    respond({
+      serverIp: '0.0.0.0',
+      serverPort: fx.lan.port,
+      apiUrl: `http://localhost:${fx.lan.port}/api`,
+      networkRange: '192.168.1.0/24',
+      allowExaminerPCs: true,
+      allowStudentPCs: true,
+    }),
+
+  updateLanConfig: (patch: Partial<LanConfig>): Promise<LanConfig> =>
+    respond({
+      serverIp: '0.0.0.0',
+      serverPort: fx.lan.port,
+      apiUrl: `http://localhost:${fx.lan.port}/api`,
+      networkRange: '192.168.1.0/24',
+      allowExaminerPCs: true,
+      allowStudentPCs: true,
+      ...patch,
+    }),
+
+  workstationWhitelistEnabled: (): Promise<{ enabled: boolean }> =>
+    respond({ enabled: true }),
+
+  updateWorkstationWhitelist: (enabled: boolean): Promise<{ enabled: boolean }> =>
+    respond({ enabled }),
 }
 
 /* -------------------------------------------------------------------------- */
@@ -249,6 +278,41 @@ export const mockStudentsApi = {
     const deleted = before - rows.length
     fx.students.splice(0, fx.students.length, ...rows)
     return respond({ deleted })
+  },
+
+  bulkCreate: (payloads: StudentInput[]): Promise<{ created: number; failed: Array<{ row: number; studentId: string; error: string }> }> => {
+    const failed: Array<{ row: number; studentId: string; error: string }> = []
+    let created = 0
+    payloads.forEach((payload, i) => {
+      const exists = fx.students.find((s) => s.studentId === payload.studentId)
+      if (exists) {
+        failed.push({ row: i + 1, studentId: payload.studentId, error: 'This student ID is already in use' })
+        return
+      }
+      const id = `stu-${String(fx.students.length + created + 1).padStart(6, '0')}`
+      const student: Student = {
+        id,
+        studentId: payload.studentId,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        fullName: `${payload.firstName} ${payload.lastName}`,
+        email: payload.email ?? null,
+        program: payload.program,
+        department: payload.department ?? null,
+        level: payload.level as 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800,
+        semester: payload.semester,
+        className: payload.className ?? null,
+        session: payload.session ?? null,
+        gender: payload.gender ?? null,
+        photoUrl: payload.passport ?? null,
+        status: payload.status,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      fx.students.push(student)
+      created++
+    })
+    return respond({ created, failed })
   },
 }
 

@@ -4,6 +4,7 @@ import { asyncHandler } from '../../utils/async-handler.js'
 import { sendData, sendPaginated } from '../../utils/http-response.js'
 import { clientIp, userAgentOf } from '../../services/audit.service.js'
 import {
+  bulkCreateStudents,
   deleteStudentsByFilter,
   createStudent,
   deleteStudent,
@@ -76,4 +77,9 @@ export const extendStudentSessionController = asyncHandler(async (req: Request, 
 export const bulkDeleteStudentsController = asyncHandler(async (req: Request, res: Response) => {
   const { deleted } = await deleteStudentsByFilter(req.body as never, contextOf(req))
   sendData(res, { deleted }, 200, `${deleted} student(s) deactivated`)
+})
+
+export const bulkCreateStudentsController = asyncHandler(async (req: Request, res: Response) => {
+  const result = await bulkCreateStudents(req.body as never, contextOf(req))
+  sendData(res, result, 201, `${result.created} student(s) imported${result.failed.length ? `, ${result.failed.length} failed` : ''}`)
 })

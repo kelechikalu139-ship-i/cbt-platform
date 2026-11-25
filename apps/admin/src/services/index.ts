@@ -1,6 +1,6 @@
 import * as mocks from '../mocks'
 import type { LoginResponse } from './admin.api'
-import type { ExamAttemptSummary, LiveExamSession, BackupInfo, LocalLicenseInfo } from '../types'
+import type { ExamAttemptSummary, LiveExamSession, BackupInfo, LocalLicenseInfo, LanConfig } from '../types'
 import {
   realAuditApi,
   realAuthApi,
@@ -151,6 +151,11 @@ export const systemApi = pick(
       rowCounts: {},
     }),
     restoreBackup: async (): Promise<void> => undefined,
+    lanConfig: () => mocks.mockSystemApi.lanConfig(),
+    updateLanConfig: (patch: Partial<LanConfig>) => mocks.mockSystemApi.updateLanConfig(patch),
+    workstationWhitelistEnabled: () => mocks.mockSystemApi.workstationWhitelistEnabled(),
+    updateWorkstationWhitelist: (enabled: boolean) =>
+      mocks.mockSystemApi.updateWorkstationWhitelist(enabled),
   },
   {
     health: realSystemApi.health,
@@ -167,6 +172,10 @@ export const systemApi = pick(
     backups: realSystemApi.backups,
     backup: realSystemApi.backup,
     restoreBackup: realSystemApi.restoreBackup,
+    lanConfig: realSystemApi.lanConfig,
+    updateLanConfig: realSystemApi.updateLanConfig,
+    workstationWhitelistEnabled: realSystemApi.workstationWhitelistEnabled,
+    updateWorkstationWhitelist: realSystemApi.updateWorkstationWhitelist,
   },
 )
 
@@ -178,6 +187,7 @@ export const studentsApi = pick(
     options: mocks.mockStudentsApi.options,
     endSession: mocks.mockStudentsApi.endSession,
     removeByFilter: mocks.mockStudentsApi.removeByFilter,
+    bulkCreate: mocks.mockStudentsApi.bulkCreate,
     create: (): Promise<never> => notYet('Creating a student'),
     update: (): Promise<never> => notYet('Editing a student'),
     setStatus: (): Promise<never> => notYet('Changing student status'),
@@ -199,6 +209,7 @@ export const studentMutations = {
   remove: realStudentsApi.remove,
   removeByFilter: realStudentsApi.removeByFilter,
   endSession: realStudentsApi.endSession,
+  bulkCreate: realStudentsApi.bulkCreate,
 }
 
 export const questionsApi = pick(

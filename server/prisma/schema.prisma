@@ -203,6 +203,9 @@ model Student {
   /// the year of entry.
   session    String? @db.VarChar(20)
   gender     String? @db.VarChar(20)
+  /// Optional path to the candidate's passport/photo image, served from
+  /// `/api/v1/uploads`. Uploaded through the add/edit candidate forms.
+  passport   String? @db.VarChar(500)
   status     UserStatus @default(ACTIVE)
   deletedAt  DateTime?
   createdAt  DateTime @default(now())

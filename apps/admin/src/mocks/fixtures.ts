@@ -151,6 +151,7 @@ export const students: Student[] = Array.from({ length: STUDENT_COUNT }, (_, i) 
     className: CLASS_NAMES[i % CLASS_NAMES.length]!,
     session: SESSIONS[i % SESSIONS.length]!,
     gender: i % 2 === 0 ? 'Female' : 'Male',
+    photoUrl: null,
     status,
     hasPortalAccount: i % 4 !== 0,
     hasActiveSession: i % 5 === 0, // ~20% have active sessions

@@ -205,6 +205,8 @@ export interface Student {
   /** Academic session, e.g. "2026/2027". */
   session: string | null
   gender: string | null
+  /** Optional URL of the candidate's passport/photo image. */
+  photoUrl: string | null
   status: EntityStatus
   /** Detail view only: whether portal credentials have been issued. */
   hasPortalAccount?: boolean
@@ -235,6 +237,8 @@ export interface StudentInput {
   email?: string
   phone?: string
   gender?: string
+  /** Optional URL of the candidate's passport/photo image. */
+  passport?: string
   program: string
   department?: string
   level: number
@@ -825,6 +829,24 @@ export interface SystemSettings {
   approvedHallNetworks?: string[]
   studentAccessDevicesEnabled: boolean
   studentAccessDevices: string[]
+}
+
+/**
+ * LAN configuration for the server machine.
+ *
+ * Returned by `GET /settings/lan-config`. `serverIp` should be the machine's
+ * LAN address (e.g. `192.168.0.167`), not `0.0.0.0` — `0.0.0.0` only means
+ * "listen on all interfaces" and cannot be used by a client to reach the API.
+ */
+export interface LanConfig {
+  serverIp: string
+  serverPort: number
+  /** The full API base URL clients should use, e.g. "http://192.168.0.167:5001/api". */
+  apiUrl: string
+  /** CIDR range for the school's LAN, e.g. "192.168.1.0/24". */
+  networkRange: string
+  allowExaminerPCs: boolean
+  allowStudentPCs: boolean
 }
 
 /* -------------------------------------------------------------------------- */

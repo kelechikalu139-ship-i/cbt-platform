@@ -59,6 +59,8 @@ export const createStudentSchema = z.object({
   className: z.string().trim().max(80).optional().or(z.literal('')),
   session: sessionField,
   gender: z.string().trim().max(20).optional().or(z.literal('')),
+  /** Optional path to the candidate's passport/photo image. */
+  passport: z.string().trim().url('Enter a valid image URL').max(500).optional().or(z.literal('')),
   /** Optional portal login for the student. Omitted means portal access is off. */
   userEmail: z.string().trim().email('Enter a valid email address').max(190).optional().or(z.literal('')),
   userPassword: z.string().min(8).max(200).optional(),
@@ -105,6 +107,13 @@ export const bulkDeleteStudentsSchema = z
   );
 
 export type BulkDeleteStudentsInput = z.infer<typeof bulkDeleteStudentsSchema>;
+
+/** Create many students from a CSV roster. Each row mirrors `createStudentSchema`. */
+export const bulkCreateStudentsSchema = z.object({
+  students: z.array(createStudentSchema).min(1, 'The roster contains no valid rows').max(500, 'Too many rows'),
+});
+
+export type BulkCreateStudentsInput = z.infer<typeof bulkCreateStudentsSchema>;
 
 /** Sortable student columns, restricted to what the UI offers. */
 export const STUDENT_SORT_FIELDS = [
