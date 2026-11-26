@@ -168,6 +168,11 @@ export const realSystemApi = {
   workstationWhitelistEnabled: () => http.get<{ enabled: boolean }>('/settings/workstations/config'),
   updateWorkstationWhitelist: (enabled: boolean) =>
     http.put<{ enabled: boolean }>('/settings/workstations/config', { enabled }),
+  /** Master academic reference data: programme, department, cohort. */
+  masterData: (kind: "programme" | "department" | "cohort") =>
+    http.get<{ kind: string; items: string[] }>(`/settings/master-data?kind=${kind}`),
+  updateMasterData: (kind: "programme" | "department" | "cohort", items: string[]) =>
+    http.post<{ kind: string; items: string[] }>("/settings/master-data", { kind, items }),
 }
 
 /* -------------------------------------------------------------------------- */

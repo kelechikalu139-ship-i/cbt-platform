@@ -156,6 +156,10 @@ export const systemApi = pick(
     workstationWhitelistEnabled: () => mocks.mockSystemApi.workstationWhitelistEnabled(),
     updateWorkstationWhitelist: (enabled: boolean) =>
       mocks.mockSystemApi.updateWorkstationWhitelist(enabled),
+    masterData: (kind: "programme" | "department" | "cohort") =>
+      mocks.mockSystemApi.masterData(kind),
+    updateMasterData: (kind: "programme" | "department" | "cohort", items: string[]) =>
+      mocks.mockSystemApi.updateMasterData(kind, items),
   },
   {
     health: realSystemApi.health,
@@ -176,6 +180,8 @@ export const systemApi = pick(
     updateLanConfig: realSystemApi.updateLanConfig,
     workstationWhitelistEnabled: realSystemApi.workstationWhitelistEnabled,
     updateWorkstationWhitelist: realSystemApi.updateWorkstationWhitelist,
+    masterData: realSystemApi.masterData,
+    updateMasterData: realSystemApi.updateMasterData,
   },
 )
 

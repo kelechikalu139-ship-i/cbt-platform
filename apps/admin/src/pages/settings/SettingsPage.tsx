@@ -1,4 +1,4 @@
-import { Check, Database, KeyRound, RotateCcw, Save, Server, ShieldCheck, Upload, X } from 'lucide-react'
+import { Check, Database, KeyRound, Plus, RotateCcw, Save, Server, ShieldCheck, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   Alert,
@@ -70,6 +70,14 @@ export function SettingsPage({
   const [restoring, setRestoring] = useState(false)
   const [lanConfig, setLanConfig] = useState<LanConfig | null>(null)
   const [lanSaving, setLanSaving] = useState(false)
+  const [masterData, setMasterData] = useState<{ programme: string[]; department: string[]; cohort: string[] }>({
+    programme: [],
+    department: [],
+    cohort: [],
+  })
+  const [masterSaving, setMasterSaving] = useState(false)
+  const [masterKind, setMasterKind] = useState<"programme" | "department" | "cohort">("programme")
+  const [masterInput, setMasterInput] = useState("")
 
   // Reload the form when new data arrives, unless the administrator is editing.
   useEffect(() => {
@@ -102,6 +110,23 @@ export function SettingsPage({
       .lanConfig()
       .then((config) => setLanConfig(config))
       .catch(() => setLanConfig(null))
+  }, [])
+
+  // Fetch master academic reference data so examiners, candidates and exams can
+  // pick from school-registered programmes, departments and cohorts.
+  useEffect(() => {
+    void systemApi
+      .masterData("programme")
+      .then((r) => setMasterData((prev) => ({ ...prev, programme: r.items })))
+      .catch(() => setMasterData((prev) => ({ ...prev, programme: [] })))
+    void systemApi
+      .masterData("department")
+      .then((r) => setMasterData((prev) => ({ ...prev, department: r.items })))
+      .catch(() => setMasterData((prev) => ({ ...prev, department: [] })))
+    void systemApi
+      .masterData("cohort")
+      .then((r) => setMasterData((prev) => ({ ...prev, cohort: r.items })))
+      .catch(() => setMasterData((prev) => ({ ...prev, cohort: [] })))
   }, [])
 
   const activateLicense = () => {
@@ -505,6 +530,117 @@ export function SettingsPage({
             ) : (
               <p className="text-xs text-slate-500">Loading LAN configuration…</p>
             )}
+          </PanelBody>
+        </Panel>
+
+        {/* Master academic reference data */}
+        <Panel>
+          <PanelHeader
+            title="Programmes, departments & cohorts"
+            description="School-wide academic vocabulary that examiner, candidate and exam forms pick from."
+          />
+          <PanelBody className="space-y-4">
+            <div className="flex items-center gap-2">
+              <select
+                value={masterKind}
+                onChange={(e) => setMasterKind(e.target.value as "programme" | "department" | "cohort")}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="programme">Programmes</option>
+                <option value="department">Departments</option>
+                <option value="cohort">Cohorts / sets</option>
+              </select>
+              <input
+                className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Enter a name and press Enter"
+                value={masterInput}
+                onChange={(e) => setMasterInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    const value = masterInput.trim()
+                    if (!value) return
+                    setMasterSaving(true)
+                    void systemApi
+                      .updateMasterData(masterKind, [...masterData[masterKind], value])
+                      .then(() => {
+                        setMasterInput("")
+                        setMasterData((prev) => ({ ...prev, [masterKind]: [...prev[masterKind], value] }))
+                      })
+                      .catch(() => {
+                        // Server reports the failure
+                      })
+                      .finally(() => setMasterSaving(false))
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={masterSaving || !masterInput.trim()}
+                onClick={() => {
+                  const value = masterInput.trim()
+                  if (!value) return
+                  setMasterSaving(true)
+                  void systemApi
+                    .updateMasterData(masterKind, [...masterData[masterKind], value])
+                    .then(() => {
+                      setMasterInput("")
+                      setMasterData((prev) => ({ ...prev, [masterKind]: [...prev[masterKind], value] }))
+                    })
+                    .catch(() => {
+                      // Server reports the failure
+                    })
+                    .finally(() => setMasterSaving(false))
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border px-3 py-2.5 text-left',
+                  masterSaving
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'border-slate-200 bg-white hover:bg-amber-50 cursor-pointer',
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                <span className="text-xs font-medium">{masterSaving ? 'Adding…' : 'Add'}</span>
+              </button>
+            </div>
+            <div className="space-y-1">
+              {masterData[masterKind].map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
+                >
+                  <span className="text-slate-700">{item}</span>
+                  <button
+                    type="button"
+                    className="rounded-md border border-transparent px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"
+                    onClick={() => {
+                      setMasterSaving(true)
+                      void systemApi
+                        .updateMasterData(masterKind, masterData[masterKind].filter((_, j) => j !== i))
+                        .then(() =>
+                          setMasterData((prev) => ({
+                            ...prev,
+                            [masterKind]: prev[masterKind].filter((_, j) => j !== i),
+                          })),
+                        )
+                        .catch(() => {
+                          // Server reports the failure
+                        })
+                        .finally(() => setMasterSaving(false))
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
+              ))}
+              {masterData[masterKind].length === 0 && (
+                <p className="px-3 py-2 text-xs text-slate-400">None yet. Add one above.</p>
+              )}
+            </div>
+            <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+              These values appear as choices in the examiner, candidate and exam
+              forms so the school uses one consistent list everywhere.
+            </p>
           </PanelBody>
         </Panel>
 

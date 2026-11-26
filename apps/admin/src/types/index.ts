@@ -204,6 +204,8 @@ export interface Student {
   className: string | null
   /** Academic session, e.g. "2026/2027". */
   session: string | null
+  /** Cohort / set, e.g. "Set A". */
+  cohort: string | null
   gender: string | null
   /** Optional URL of the candidate's passport/photo image. */
   photoUrl: string | null
@@ -246,6 +248,8 @@ export interface StudentInput {
   className?: string
   /** Academic session, e.g. "2026/2027". */
   session?: string
+  /** Cohort / set, e.g. "Set A". */
+  cohort?: string
   status: EntityStatus
   userEmail?: string
   userPassword?: string
@@ -268,6 +272,8 @@ export interface SchoolOptions {
   programs: string[]
   /** Departments, e.g. "Health Sciences". */
   departments: string[]
+  /** Cohorts/sets, e.g. ["Set A", "Set B"]. */
+  cohorts: string[]
   /** Class names, e.g. "NMR 100 - A". */
   classes: string[]
   /** Academic sessions, e.g. ["2026/2027"]. */

@@ -152,6 +152,7 @@ export const students: Student[] = Array.from({ length: STUDENT_COUNT }, (_, i) 
     session: SESSIONS[i % SESSIONS.length]!,
     gender: i % 2 === 0 ? 'Female' : 'Male',
     photoUrl: null,
+    cohort: i % 3 === 0 ? 'Set A' : i % 3 === 1 ? 'Set B' : 'Set C',
     status,
     hasPortalAccount: i % 4 !== 0,
     hasActiveSession: i % 5 === 0, // ~20% have active sessions
@@ -622,6 +623,13 @@ export const lan = {
   port: 5000,
   interfaceName: 'Ethernet',
   internetReachable: false,
+}
+
+/** Master academic reference data used by pickers across forms. */
+export const masterData: Record<string, string[]> = {
+  programme: [],
+  department: [],
+  cohort: [],
 }
 
 export const getStudentUrl = (): string => `http://${lan.address}:${lan.port}/student`

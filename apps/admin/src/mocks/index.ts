@@ -204,6 +204,13 @@ export const mockSystemApi = {
 
   updateWorkstationWhitelist: (enabled: boolean): Promise<{ enabled: boolean }> =>
     respond({ enabled }),
+
+  /** Master academic reference data: programme, department, cohort. */
+  masterData: (kind: "programme" | "department" | "cohort") =>
+    respond({ kind, items: fx.masterData[kind] ?? [] }),
+
+  updateMasterData: (kind: "programme" | "department" | "cohort", items: string[]) =>
+    respond({ kind, items: (fx.masterData[kind] = items) }),
 }
 
 /* -------------------------------------------------------------------------- */
@@ -250,6 +257,9 @@ export const mockStudentsApi = {
       programs: [...new Set(fx.students.map((s) => s.program))].sort(),
       departments: [
         ...new Set(fx.students.map((s) => s.department).filter((d): d is string => !!d)),
+      ].sort(),
+      cohorts: [
+        ...new Set(fx.students.map((s) => s.cohort).filter((c): c is string => !!c)),
       ].sort(),
       classes: [...new Set(fx.students.map((s) => s.className).filter((c): c is string => !!c))].sort(),
       sessions: [...new Set(fx.students.map((s) => s.session).filter((v): v is string => !!v))].sort(),
@@ -303,6 +313,7 @@ export const mockStudentsApi = {
         semester: payload.semester,
         className: payload.className ?? null,
         session: payload.session ?? null,
+        cohort: payload.cohort ?? null,
         gender: payload.gender ?? null,
         photoUrl: payload.passport ?? null,
         status: payload.status,
