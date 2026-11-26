@@ -120,6 +120,7 @@ interface ParsedStudent {
   session: string
   gender: string
   status: string
+  passport?: string
 }
 
 export function StudentsPage({
@@ -835,6 +836,7 @@ function StudentProfile({ student }: { student: Student }) {
     ['Admission number', student.studentId],
     ['Full name', student.fullName],
     ['Email', student.email ?? '—'],
+    ['Passport / photo', student.photoUrl ?? '—'],
     ['Programme', student.program],
     ['Department', student.department ?? '—'],
     ['Class', student.className ?? '—'],
@@ -945,6 +947,7 @@ function AddStudentModal({
     firstName: '',
     lastName: '',
     email: '',
+    passport: '',
     program: '',
     department: '',
     level: '100',
@@ -973,6 +976,7 @@ function AddStudentModal({
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
       email: form.email.trim() || undefined,
+      passport: form.passport.trim() || undefined,
       program: form.program.trim(),
       department: form.department.trim() || undefined,
       level: Number(form.level),
@@ -1060,6 +1064,15 @@ function AddStudentModal({
               value={form.email}
               onChange={(e) => set('email')(e.target.value)}
               placeholder="name@school.local"
+            />
+          </FormField>
+          <FormField label="Passport / photo URL">
+            <input
+              type="url"
+              className={inputClass}
+              value={form.passport}
+              onChange={(e) => set('passport')(e.target.value)}
+              placeholder="https://school.local/photos/SCI-0001.jpg"
             />
           </FormField>
           <Combobox
@@ -1196,6 +1209,7 @@ function EditStudentModal({
     firstName: '',
     lastName: '',
     email: '',
+    passport: '',
     program: '',
     department: '',
     level: '100',
@@ -1219,6 +1233,7 @@ function EditStudentModal({
       firstName: student.firstName,
       lastName: student.lastName,
       email: student.email ?? '',
+      passport: student.photoUrl ?? '',
       program: student.program,
       department: student.department ?? '',
       level: String(student.level),
@@ -1242,6 +1257,7 @@ function EditStudentModal({
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
       email: form.email.trim() || '',
+      passport: form.passport.trim() || '',
       program: form.program.trim(),
       department: form.department.trim() || '',
       level: Number(form.level),
@@ -1325,6 +1341,15 @@ function EditStudentModal({
               className={inputClass}
               value={form.email}
               onChange={(e) => set('email')(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Passport / photo URL">
+            <input
+              type="url"
+              className={inputClass}
+              value={form.passport}
+              onChange={(e) => set('passport')(e.target.value)}
+              placeholder="https://school.local/photos/SCI-0001.jpg"
             />
           </FormField>
           <Combobox
@@ -1477,6 +1502,7 @@ function ImportStudentsModal({ open, onClose, error, submitting, onSubmit }: Imp
       firstName: row.firstname?.trim() ?? '',
       lastName: row.lastname?.trim() ?? '',
       email: row.email?.trim() || undefined,
+      passport: row.passport?.trim() || undefined,
       program: row.program?.trim() ?? '',
       department: row.department?.trim() || undefined,
       level: Number(row.level) || 100,
