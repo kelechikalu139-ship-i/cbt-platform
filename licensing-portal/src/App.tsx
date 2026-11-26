@@ -25,7 +25,7 @@ const API_CONFIGURATION_ERROR =
 const configuredInstallerUrl = import.meta.env.VITE_CBT_INSTALLER_URL?.trim();
 const configuredCaosceInstallerUrl = import.meta.env.VITE_CAOSCE_INSTALLER_URL?.trim();
 const FALLBACK_INSTALLER_URL =
-  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/latest/download/The-Platform-CBT-Setup-latest.exe";
+  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.32/The-Platform-CBT-Setup-1.0.32-unsigned.exe";
 const FALLBACK_CAOSCE_INSTALLER_URL =
   "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/caosce-v1.0.13/CAOSCE-Platform-Setup-v1.0.13.exe";
 
