@@ -202,7 +202,13 @@ export default function App() {
           for (let i = 0; i < 3; i++) if (a.version[i] !== b.version[i]) return b.version[i] - a.version[i];
           return 0;
         });
-        if (!cancelled && caosceReleases[0]) setCaosceInstallerDownloadUrl(caosceReleases[0].url);
+        // The configured installer URL (env VITE_CAOSCE_INSTALLER_URL, or the
+        // hardcoded fallback below) is authoritative: the product owner chooses
+        // which installer build to serve. GitHub auto-detect is only a last
+        // resort when no explicit installer URL is configured.
+        if (!cancelled && caosceReleases[0] && !FALLBACK_CAOSCE_DOWNLOAD_URL) {
+          setCaosceInstallerDownloadUrl(caosceReleases[0].url);
+        }
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
