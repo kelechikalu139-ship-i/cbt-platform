@@ -519,6 +519,7 @@ export async function bulkCreateStudents(
   input: BulkCreateStudentsInput,
   context: { actorId: string; ipAddress?: string | null; userAgent?: string | null },
 ): Promise<{ created: number; failed: Array<{ row: number; studentId: string; error: string }> }> {
+  bulkCreateStudentsSchema.parse(input)
   const created: Array<Prisma.StudentGetPayload<{ select: typeof listSelect }>> = []
   const failed: Array<{ row: number; studentId: string; error: string }> = []
 
@@ -526,7 +527,7 @@ export async function bulkCreateStudents(
     const rowNumber = index + 1
     try {
       const student = await createStudent(row, context)
-      created.push(student as Prisma.StudentGetPayload<{ select: typeof listSelect }>)
+      created.push(student as unknown as Prisma.StudentGetPayload<{ select: typeof listSelect }>)
     } catch (error) {
       failed.push({
         row: rowNumber,
