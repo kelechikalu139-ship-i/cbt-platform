@@ -27,7 +27,7 @@ const configuredCaosceInstallerUrl = import.meta.env.VITE_CAOSCE_INSTALLER_URL?.
 const FALLBACK_INSTALLER_URL =
   "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/v1.0.32/The-Platform-CBT-Setup-1.0.32-unsigned.exe";
 const FALLBACK_CAOSCE_INSTALLER_URL =
-  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/caosce-v1.0.20/CAOSCE-Platform-Setup-v1.0.20.exe";
+  "https://github.com/kelechikalu139-ship-i/cbt-platform/releases/download/caosce-v1.0.21/CAOSCE-Platform-Setup-v1.0.21.exe";
 
 function normalizeDownloadUrl(value: string | undefined): string | null {
   if (!value) return null;
